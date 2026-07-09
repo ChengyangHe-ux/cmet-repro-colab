@@ -62,6 +62,24 @@ python -m pip install \
 
 The full requirements are more appropriate for a controlled conda environment with Python 3.9.
 
+## `AttributeError: module 'numpy' has no attribute 'complex'`
+
+This is an old `librosa`/new NumPy compatibility issue. Run the updated notebook cells:
+
+```text
+4. Install Minimal Python Dependencies
+4.1 Patch Optional Imports And Compatibility
+4.2 Verify Audio Dependencies
+```
+
+The install cell now pins:
+
+```bash
+librosa==0.10.2.post1
+```
+
+The patch cell also edits `src/audio.py` so older NumPy aliases are restored before `librosa` is imported.
+
 ## `gfpgan` or `basicsr` errors
 
 Do not use super-resolution for the first demo. The baseline inference command should not include `--sr`.

@@ -21,7 +21,7 @@ A100 GPU > L4 GPU > T4 GPU
 
 Turn on high RAM if available.
 
-The notebook intentionally uses a minimal inference dependency set instead of the full official `requirements.txt`, because Colab's default Python may be newer than the version used by the paper authors.
+The notebook intentionally uses a minimal inference dependency set instead of the full official `requirements.txt`, because Colab's default Python may be newer than the version used by the paper authors. It also patches optional imports and the common `librosa`/NumPy compatibility issue before running inference.
 
 ## First Goal
 
