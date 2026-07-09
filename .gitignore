@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.venv/
+venv/
+env/
+
+# Local runtime artifacts
+C-MET/
+third_party/
+checkpoints/
+pretrained_weights/
+data/
+dataset/
+outputs/
+res/
+*.mp4
+*.wav
+*.npy
+*.pt
+*.pth
+
+# OS/editor
+.DS_Store
+.idea/
+.vscode/
+
