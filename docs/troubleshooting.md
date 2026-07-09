@@ -45,7 +45,7 @@ Then restart the runtime if the error involves compiled packages.
 For the demo path, `funasr` is not actually needed because the notebook uses pre-extracted `emotion2vec+large` feature folders. Run the notebook cell named:
 
 ```text
-4.1 Patch Optional funasr Import
+4.1 Patch Optional Imports And Compatibility
 ```
 
 Then rerun the inference cell.
