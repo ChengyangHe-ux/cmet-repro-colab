@@ -1,43 +1,42 @@
-# Experiment Log
+# 实验记录
 
-## Metadata
+## 基本信息
 
-- Date:
-- Runtime:
+- 日期：
+- 运行环境：
 - GPU:
-- VRAM:
+- 显存：
 - Python:
 - Torch:
-- CUDA available:
+- CUDA 是否可用：
 
-## Command
+## 运行命令
 
 ```bash
 
 ```
 
-## Inputs
+## 输入
 
-- Source image:
-- Driving audio:
-- Pose video:
-- Neutral e2v path:
-- Emotional e2v path:
+- 源身份图片：
+- 驱动音频：
+- 姿态视频：
+- 中性 e2v 路径：
+- 情绪 e2v 路径：
 
-## Output
+## 输出
 
-- Video path:
-- Plays correctly:
+- 视频路径：
+- 是否能正常播放：
 
-## Result
+## 结果描述
 
-Describe visible emotion, mouth sync, identity preservation, and artifacts.
+描述可见情绪、嘴型同步、身份保持和明显伪影。
 
-## Error
+## 报错
 
-Paste the full traceback here.
+把完整报错堆栈贴在这里。
 
-## Next Step
+## 下一步
 
-Write exactly one next action.
-
+只写一个最具体的下一步动作。

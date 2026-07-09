@@ -1,58 +1,57 @@
-# C-MET Reproduction Plan
+# C-MET 复现计划
 
-## Scope
+## 复现范围
 
-The first reproduction target is official checkpoint inference, not full training.
+第一阶段只复现官方权重检查点推理，不做完整训练。
 
-## Phase 1: Official Demo
+## 阶段 1：官方演示
 
-Tasks:
+任务清单：
 
-- [ ] Open `notebooks/C-MET_Colab_Demo.ipynb` in Colab.
-- [ ] Select `A100 GPU` if available, otherwise `L4 GPU`, otherwise `T4 GPU`.
-- [ ] Run the GPU check cell.
-- [ ] Clone official C-MET.
-- [ ] Install dependencies.
-- [ ] Run happy demo.
-- [ ] Run sarcastic demo.
-- [ ] Save output videos.
+- [ ] 在 Colab 打开 `notebooks/C-MET_Colab_Demo.ipynb`。
+- [ ] 优先选择 `A100 GPU`，没有就选 `L4 GPU`，再不行选 `T4 GPU`。
+- [ ] 运行 GPU 检查单元。
+- [ ] 克隆官方 C-MET。
+- [ ] 安装依赖。
+- [ ] 运行 happy 演示。
+- [ ] 运行 sarcastic 演示。
+- [ ] 保存输出视频。
 
-Exit condition:
+完成标准：
 
-- `ChatGPT_man3_happy.mp4` plays.
-- `ChatGPT_man3_sarcastic.mp4` plays.
+- `ChatGPT_man3_happy.mp4` 能播放。
+- `ChatGPT_man3_sarcastic.mp4` 能播放。
 
-## Phase 2: Report Evidence
+## 阶段 2：整理汇报证据
 
-Tasks:
+任务清单：
 
-- [ ] Record GPU type and VRAM.
-- [ ] Record dependency issues.
-- [ ] Screenshot or export generated videos.
-- [ ] Compare basic emotion and extended emotion outputs qualitatively.
+- [ ] 记录 GPU 型号和显存。
+- [ ] 记录依赖问题和解决办法。
+- [ ] 截图或导出生成视频。
+- [ ] 定性比较基础情绪和扩展情绪输出。
 
-Exit condition:
+完成标准：
 
-- The report can show one successful generated output or a precise blocker log.
+- 汇报里能展示至少一个成功生成结果，或者给出清楚的阻塞日志。
 
-## Phase 3: Small-Sample Training
+## 阶段 3：小样本训练
 
-Tasks:
+任务清单：
 
-- [ ] Prepare a small MEAD subset.
-- [ ] Use official preprocessing.
-- [ ] Pre-extract emotion2vec+large features if possible.
-- [ ] Train C-MET connector only first.
-- [ ] Keep batch size small.
+- [ ] 准备一个小的 MEAD 子集。
+- [ ] 使用官方预处理流程。
+- [ ] 尽量提前抽取 `emotion2vec+large` 特征。
+- [ ] 先只训练 C-MET connector。
+- [ ] 保持较小 batch size。
 
-Exit condition:
+完成标准：
 
-- Training loop starts and loss decreases for a small number of iterations.
+- 训练循环能启动，并且 loss 在少量迭代内下降。
 
-## Out Of Scope Before The Presentation
+## 汇报前先不做
 
-- Full MEAD training.
-- Full CREMA-D evaluation.
-- FID/FVD reproduction.
-- Complete ablation table reproduction.
-
+- 完整 MEAD 训练。
+- 完整 CREMA-D 评估。
+- FID/FVD 复现。
+- 完整消融实验表复现。

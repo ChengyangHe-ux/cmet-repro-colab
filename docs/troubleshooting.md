@@ -1,58 +1,59 @@
-# Troubleshooting
+# 排错手册
 
-## `torch.cuda.is_available()` is false
+## `torch.cuda.is_available()` 是 false
 
-The runtime is not using a GPU. In Colab, go to:
+说明当前运行时没有使用 GPU。在 Colab 里进入：
 
 ```text
 Runtime -> Change runtime type -> GPU
+如果 Colab 界面是中文：运行时 -> 更改运行时类型 -> GPU
 ```
 
-Prefer `A100`, then `L4`, then `T4`.
+优先选 `A100`，其次 `L4`，再其次 `T4`。
 
 ## `CUDA out of memory`
 
-First attempts:
+先这样处理：
 
-- Do not use `--sr`.
-- Prefer A100 or L4.
-- Restart runtime and run only the required cells.
-- Avoid running multiple demo jobs in parallel.
+- 不要使用 `--sr`。
+- 优先使用 A100 或 L4。
+- 重启运行时，只运行必要单元。
+- 不要同时跑多个演示。
 
-## Checkpoint download fails
+## 权重检查点下载失败
 
-The official `inference.py` tries to download weights from Hugging Face:
+官方 `inference.py` 会尝试从 Hugging Face 下载这些权重：
 
 - `pretrained_weights/Audio2Lip.pt`
 - `pretrained_weights/EDTalk.pt`
 - `pretrained_weights/EDTalk-V.pt`
 - `checkpoints/_epoch_2105_checkpoint_step000200000.pth`
 
-If automatic download fails, use the official README links or Hugging Face model page.
+如果自动下载失败，就用官方 README 里的链接或 Hugging Face 模型页手动处理。
 
 ## `ModuleNotFoundError`
 
-Install the missing package in the active runtime:
+在当前运行时安装缺失的包：
 
 ```bash
 pip install package_name
 ```
 
-Then restart the runtime if the error involves compiled packages.
+如果报错涉及编译包，安装后重启运行时。
 
 ## `ModuleNotFoundError: No module named 'funasr'`
 
-For the demo path, `funasr` is not actually needed because the notebook uses pre-extracted `emotion2vec+large` feature folders. Run the notebook cell named:
+演示路径其实不需要 `funasr`，因为 Colab 笔记本使用的是预先抽取好的 `emotion2vec+large` 特征文件夹。运行这个单元：
 
 ```text
-4.1 Patch Optional Imports And Compatibility
+4.1 修补可选导入和兼容问题
 ```
 
-Then rerun the inference cell.
+然后重新运行推理单元。
 
-## `pip install -r requirements.txt` fails
+## `pip install -r requirements.txt` 失败
 
-Do not use the full official requirements for the first Colab demo. Colab may use Python 3.12, while the official project was tested with Python 3.8/3.9. Use the minimal install cell in the notebook:
+第一次 Colab 演示不要安装完整官方 requirements。Colab 可能使用 Python 3.12，而官方项目更接近 Python 3.8/3.9 环境。使用 Colab 笔记本里的最小依赖安装单元：
 
 ```bash
 python -m pip install --no-cache-dir \
@@ -64,85 +65,85 @@ python -m pip install --no-cache-dir \
   opencv-python-headless==4.13.0.92 pillow==11.3.0
 ```
 
-The full requirements are more appropriate for a controlled conda environment with Python 3.9.
+完整 requirements 更适合在可控的 conda Python 3.9 环境里使用。
 
-## `pandas` or `setuptools` dependency conflict warnings
+## `pandas` 或 `setuptools` 依赖冲突警告
 
-Do not use `--upgrade` for the first Colab demo dependency cell. It can upgrade Colab core packages too far, for example `pandas==3.x` or `setuptools>=82`, which conflicts with Colab/Torch packages. Run the pinned minimal dependency cell in the notebook to restore compatible versions.
+第一次 Colab 演示的依赖单元不要用 `--upgrade`。它可能把 Colab 核心包升级得太新，比如 `pandas==3.x` 或 `setuptools>=82`，从而和 Colab/Torch 冲突。运行 Colab 笔记本里固定版本的最小依赖单元，就能恢复到兼容版本。
 
 ## `AttributeError: module 'numpy' has no attribute 'complex'`
 
-This is an old `librosa`/new NumPy compatibility issue. Run the updated notebook cells:
+这是旧 `librosa` 和新 NumPy 的兼容问题。运行更新后的 Colab 笔记本单元：
 
 ```text
-4. Install Minimal Python Dependencies
-4.1 Patch Optional Imports And Compatibility
-4.2 Verify Patched Runtime
+4. 安装最小 Python 依赖
+4.1 修补可选导入和兼容问题
+4.2 验证补丁是否生效
 ```
 
-The install cell now pins:
+安装单元已经固定：
 
 ```bash
 librosa==0.10.2.post1
 ```
 
-The patch cell also edits `src/audio.py` so older NumPy aliases are restored before `librosa` is imported.
+补丁单元还会修改 `src/audio.py`，在导入 `librosa` 前恢复旧 NumPy 别名。
 
 ## `AttributeError: module 'pkgutil' has no attribute 'ImpImporter'`
 
-This is a Python 3.12 compatibility issue from the `moviepy -> pygame -> pkg_resources` import chain. The first demo does not need `moviepy.editor` because we are not using `--sr`.
+这是 Python 3.12 下 `moviepy -> pygame -> pkg_resources` 导入链导致的兼容问题。第一次演示不使用 `--sr`，所以不需要 `moviepy.editor`。
 
-Run the updated notebook cell:
+运行更新后的 Colab 笔记本单元：
 
 ```text
-4.1 Patch Optional Imports And Compatibility
+4.1 修补可选导入和兼容问题
 ```
 
-It removes the top-level `moviepy.editor` import from `inference.py` and `src/util.py` for the no-super-resolution demo path.
+它会从 `inference.py` 和 `src/util.py` 里移除顶层 `moviepy.editor` 导入，适用于不跑超分的演示路径。
 
 ## `_pickle.UnpicklingError: Weights only load failed`
 
-Newer PyTorch versions load checkpoints with a safer `weights_only=True` default. The official C-MET demo checkpoints are trusted files, but `inference.py` needs to explicitly call:
+新版 PyTorch 默认用更安全的 `weights_only=True` 读取权重检查点。官方 C-MET 演示权重检查点是可信文件，但 `inference.py` 需要显式写成：
 
 ```python
 torch.load(..., weights_only=False)
 ```
 
-Run the updated notebook cell:
+运行更新后的 Colab 笔记本单元：
 
 ```text
-4.1 Patch Optional Imports And Compatibility
+4.1 修补可选导入和兼容问题
 ```
 
-Then rerun the happy demo cell. The patch edits the three `torch.load` calls in `inference.py`.
+然后重新运行 happy 演示单元。补丁会修改 `inference.py` 里的三处 `torch.load`。
 
 ## `AttributeError: module 'torchvision.io' has no attribute 'read_video'`
 
-Some current Colab torchvision builds no longer expose the old video API used by the official C-MET `src/util.py`:
+一些新版 Colab torchvision 不再暴露官方 C-MET `src/util.py` 使用的旧视频 API：
 
 ```python
 torchvision.io.read_video
 torchvision.io.write_video
 ```
 
-Run the updated notebook cell:
+运行更新后的 Colab 笔记本单元：
 
 ```text
-4.1 Patch Optional Imports And Compatibility
+4.1 修补可选导入和兼容问题
 ```
 
-Then run:
+然后运行：
 
 ```text
-4.2 Verify Patched Runtime
+4.2 验证补丁是否生效
 ```
 
-The patch appends new `vid_preprocessing()` and `save_video()` functions to `src/util.py` using `imageio + ffmpeg`, so inference no longer depends on torchvision video I/O.
+补丁会在 `src/util.py` 里追加新的 `vid_preprocessing()` 和 `save_video()` 函数，改用 `imageio + ffmpeg`，这样推理就不再依赖 torchvision 的视频 I/O。
 
-## `gfpgan` or `basicsr` errors
+## `gfpgan` 或 `basicsr` 报错
 
-Do not use super-resolution for the first demo. The baseline inference command should not include `--sr`.
+第一次演示不要用超分。基础推理命令里不要加 `--sr`。
 
-## Mac Cannot Run Official Inference Cleanly
+## Mac 不能干净地跑官方推理
 
-The official `inference.py` contains direct `.cuda()` calls. Use a CUDA runtime first. The 32GB Mac is still useful for reading, note-taking, preprocessing, and report writing.
+官方 `inference.py` 里有直接 `.cuda()` 调用。先用 CUDA 运行时复现。32GB Mac 仍然适合读论文、记笔记、做预处理和写报告。

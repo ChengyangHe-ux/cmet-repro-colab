@@ -1,51 +1,51 @@
-# C-MET Result Evaluation Guide
+# C-MET 结果评估指南
 
-This reproduction should be evaluated in three layers: demo success, visual quality, then optional quantitative metrics.
+这次复现按三层来评估：先看演示是否跑通，再看视觉质量，最后再考虑量化指标。
 
-## 1. Minimum Success Criteria
+## 1. 最低成功标准
 
-You can claim a successful first demo reproduction if all of these pass:
+只要下面这些都满足，你就可以在汇报里说“官方权重检查点推理演示已经复现成功”：
 
-- `ChatGPT_man3_happy.mp4` and `ChatGPT_man3_sarcastic.mp4` are generated.
-- Both videos play correctly and contain an audio stream.
-- Output resolution is `256x256`, and duration is greater than zero.
-- Identity is stable, with no obvious face collapse or identity drift.
-- Mouth motion is roughly synchronized with the driving audio.
-- The happy and sarcastic outputs show visibly different expression styles.
+- 成功生成 `ChatGPT_man3_happy.mp4` 和 `ChatGPT_man3_sarcastic.mp4`。
+- 两个视频都能正常播放，并且有音频流。
+- 输出分辨率是 `256x256`，视频时长大于 0。
+- 人脸身份稳定，没有明显脸崩或身份漂移。
+- 嘴型运动和驱动音频大体同步。
+- happy 和 sarcastic 两个结果能看出表情风格差异。
 
-## 2. Quick Evaluation In Colab
+## 2. Colab 里的快速评估
 
-Run these notebook sections after generating both videos:
-
-```text
-10. Evaluate Outputs: Technical QA
-10.1 Evaluate Outputs: Frame Contact Sheet
-10.2 Evaluation Rubric For Report
-```
-
-The technical QA cell should print:
+生成两个视频后，运行 Colab 笔记本里的这些小节：
 
 ```text
-technical QA: ok
+10. 评估输出：技术检查
+10.1 评估输出：帧截图表
+10.2 汇报用评估表
 ```
 
-The contact sheet can be used directly in the report to show temporal consistency and visual quality.
+技术检查单元应该打印：
 
-## 3. How To Explain It In The Report
+```text
+技术检查：通过
+```
 
-Use this structure:
+帧截图表可以直接放进汇报里，用来展示时间一致性和视觉质量。
 
-- Reproduction target: run the official pretrained checkpoint and generate basic emotion `happy` plus extended emotion `sarcastic`.
-- Runtime: record GPU type, Python version, PyTorch/CUDA version, and note that `--sr` is not used.
-- Outputs: show both generated videos and the contact sheet.
-- Evaluation dimensions: technical validity, emotion transfer, identity preservation, lip synchronization, pose stability, and visual quality.
-- Limitation: this is official-checkpoint inference reproduction, not full training reproduction yet.
+## 3. 汇报时怎么讲
 
-## 4. Stronger Quantitative Metrics
+建议按这个结构讲：
 
-If there is time after the demo works, add metrics in this order:
+- 复现目标：运行官方预训练权重检查点，生成基础情绪 `happy` 和扩展情绪 `sarcastic`。
+- 运行环境：记录 GPU 型号、Python 版本、PyTorch/CUDA 版本，并说明本次没有使用 `--sr` 超分。
+- 输出结果：展示两个生成视频和帧截图表。
+- 评估维度：技术有效性、情绪迁移、身份保持、唇形同步、姿态稳定、视觉质量。
+- 当前局限：这是官方权重检查点推理复现，还不是完整训练复现。
 
-- SyncNet / LSE-C / LSE-D for lip-audio synchronization.
-- ArcFace cosine similarity for identity preservation.
-- Facial emotion classifier score for target emotion transfer.
-- FVD / LPIPS / FID only when you have many generated samples and comparable baselines.
+## 4. 后续可以补的量化指标
+
+演示跑通后，如果还有时间，按这个优先级补：
+
+- SyncNet / LSE-C / LSE-D：评估唇音同步。
+- ArcFace cosine similarity：评估身份保持。
+- Facial emotion classifier score：评估目标情绪是否迁移成功。
+- FVD / LPIPS / FID：需要更多生成样本和可比基线，适合放到后续工作。
