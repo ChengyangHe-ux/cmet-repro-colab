@@ -108,6 +108,29 @@ Run the updated notebook cell:
 
 Then rerun the happy demo cell. The patch edits the three `torch.load` calls in `inference.py`.
 
+## `AttributeError: module 'torchvision.io' has no attribute 'read_video'`
+
+Some current Colab torchvision builds no longer expose the old video API used by the official C-MET `src/util.py`:
+
+```python
+torchvision.io.read_video
+torchvision.io.write_video
+```
+
+Run the updated notebook cell:
+
+```text
+4.1 Patch Optional Imports And Compatibility
+```
+
+Then run:
+
+```text
+4.2 Verify Patched Runtime
+```
+
+The patch appends new `vid_preprocessing()` and `save_video()` functions to `src/util.py` using `imageio + ffmpeg`, so inference no longer depends on torchvision video I/O.
+
 ## `gfpgan` or `basicsr` errors
 
 Do not use super-resolution for the first demo. The baseline inference command should not include `--sr`.

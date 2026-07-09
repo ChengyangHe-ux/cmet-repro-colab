@@ -21,7 +21,7 @@ A100 GPU > L4 GPU > T4 GPU
 
 Turn on high RAM if available.
 
-The notebook intentionally uses a minimal inference dependency set instead of the full official `requirements.txt`, because Colab's default Python may be newer than the version used by the paper authors. It also patches optional imports, common `librosa`/NumPy and `moviepy`/Python 3.12 compatibility issues, and PyTorch checkpoint loading defaults before running inference.
+The notebook intentionally uses a minimal inference dependency set instead of the full official `requirements.txt`, because Colab's default Python may be newer than the version used by the paper authors. It also patches optional imports, common `librosa`/NumPy and `moviepy`/Python 3.12 compatibility issues, PyTorch checkpoint loading defaults, and missing torchvision video I/O before running inference.
 
 ## First Goal
 
