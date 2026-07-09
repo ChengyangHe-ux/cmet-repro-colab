@@ -92,6 +92,22 @@ Run the updated notebook cell:
 
 It removes the top-level `moviepy.editor` import from `inference.py` and `src/util.py` for the no-super-resolution demo path.
 
+## `_pickle.UnpicklingError: Weights only load failed`
+
+Newer PyTorch versions load checkpoints with a safer `weights_only=True` default. The official C-MET demo checkpoints are trusted files, but `inference.py` needs to explicitly call:
+
+```python
+torch.load(..., weights_only=False)
+```
+
+Run the updated notebook cell:
+
+```text
+4.1 Patch Optional Imports And Compatibility
+```
+
+Then rerun the happy demo cell. The patch edits the three `torch.load` calls in `inference.py`.
+
 ## `gfpgan` or `basicsr` errors
 
 Do not use super-resolution for the first demo. The baseline inference command should not include `--sr`.
