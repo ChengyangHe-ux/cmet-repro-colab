@@ -42,6 +42,7 @@ notebooks/
 docs/
   reproduction_plan.md
   troubleshooting.md
+  evaluation.md
 experiments/logs/
   experiment_template.md
 scripts/
@@ -63,6 +64,7 @@ This keeps GitHub small and avoids accidentally committing model weights or gene
 - [ ] Explain Figure 3 in the paper.
 - [ ] Run the official happy demo.
 - [ ] Run the official sarcastic demo.
+- [ ] Run the notebook evaluation cells and save the contact sheet.
 - [ ] Record hardware and dependency issues.
 - [ ] Summarize why full training needs stronger GPU memory, ideally around 24GB or more.
 

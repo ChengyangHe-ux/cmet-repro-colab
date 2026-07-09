@@ -55,12 +55,20 @@ Then rerun the inference cell.
 Do not use the full official requirements for the first Colab demo. Colab may use Python 3.12, while the official project was tested with Python 3.8/3.9. Use the minimal install cell in the notebook:
 
 ```bash
-python -m pip install \
-  huggingface_hub omegaconf tqdm pandas numpy scipy librosa soundfile \
-  moviepy==1.0.3 imageio-ffmpeg av opencv-python-headless pillow
+python -m pip install --no-cache-dir \
+  'setuptools<82' 'jedi>=0.16' \
+  huggingface_hub==1.20.1 omegaconf==2.3.0 tqdm==4.67.3 \
+  pandas==2.2.2 scipy==1.16.3 \
+  librosa==0.10.2.post1 'soundfile>=0.12.1' \
+  imageio==2.37.3 imageio-ffmpeg==0.6.0 \
+  opencv-python-headless==4.13.0.92 pillow==11.3.0
 ```
 
 The full requirements are more appropriate for a controlled conda environment with Python 3.9.
+
+## `pandas` or `setuptools` dependency conflict warnings
+
+Do not use `--upgrade` for the first Colab demo dependency cell. It can upgrade Colab core packages too far, for example `pandas==3.x` or `setuptools>=82`, which conflicts with Colab/Torch packages. Run the pinned minimal dependency cell in the notebook to restore compatible versions.
 
 ## `AttributeError: module 'numpy' has no attribute 'complex'`
 
@@ -69,7 +77,7 @@ This is an old `librosa`/new NumPy compatibility issue. Run the updated notebook
 ```text
 4. Install Minimal Python Dependencies
 4.1 Patch Optional Imports And Compatibility
-4.2 Verify Audio Dependencies
+4.2 Verify Patched Runtime
 ```
 
 The install cell now pins:
