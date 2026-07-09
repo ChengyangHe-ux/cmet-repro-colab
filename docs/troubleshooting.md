@@ -80,6 +80,18 @@ librosa==0.10.2.post1
 
 The patch cell also edits `src/audio.py` so older NumPy aliases are restored before `librosa` is imported.
 
+## `AttributeError: module 'pkgutil' has no attribute 'ImpImporter'`
+
+This is a Python 3.12 compatibility issue from the `moviepy -> pygame -> pkg_resources` import chain. The first demo does not need `moviepy.editor` because we are not using `--sr`.
+
+Run the updated notebook cell:
+
+```text
+4.1 Patch Optional Imports And Compatibility
+```
+
+It removes the top-level `moviepy.editor` import from `inference.py` and `src/util.py` for the no-super-resolution demo path.
+
 ## `gfpgan` or `basicsr` errors
 
 Do not use super-resolution for the first demo. The baseline inference command should not include `--sr`.
