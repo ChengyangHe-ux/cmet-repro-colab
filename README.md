@@ -21,6 +21,8 @@ A100 GPU > L4 GPU > T4 GPU
 
 Turn on high RAM if available.
 
+The notebook intentionally uses a minimal inference dependency set instead of the full official `requirements.txt`, because Colab's default Python may be newer than the version used by the paper authors.
+
 ## First Goal
 
 Before training anything, run official checkpoint inference and generate:
@@ -70,4 +72,3 @@ This keeps GitHub small and avoids accidentally committing model weights or gene
 - Official code: https://github.com/ChanHyeok-Choi/C-MET
 - Paper: https://arxiv.org/abs/2604.07786
 - Hugging Face model: https://huggingface.co/coldhyuk/C-MET
-
