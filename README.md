@@ -13,6 +13,16 @@
 - [完整复现 Colab](https://colab.research.google.com/github/ChengyangHe-ux/cmet-repro-colab/blob/main/notebooks/C-MET_Full_Reproduction_Colab.ipynb)
 - [官方权重演示 Colab](https://colab.research.google.com/github/ChengyangHe-ux/cmet-repro-colab/blob/main/notebooks/C-MET_Colab_Demo.ipynb)
 
+完整复现默认使用公开数据入口。你只需手工完成一次 MEAD Drive 授权：
+
+1. 打开 [MEAD 官方 Part0 文件夹](https://drive.google.com/drive/folders/1GwXP-KpWOxOenOxITTsURJZQ_1pkd4-j)。
+2. 选择“整理 -> 添加快捷方式”，放到“我的云端硬盘”根目录并保持名称 `MEAD`。
+3. 在完整 Notebook 中保持 `DATA_SOURCE = "public"`，打开 `RUN_MEAD_SOURCE_CHECK` 做 47 个身份的一次性来源预检。
+4. 依次运行 MEAD/CREMA-D smoke、full、媒体门禁，之后再做特征与训练。
+
+CREMA-D 不需要手工上传。脚本从[官方 Git LFS 镜像](https://gitlab.com/cs-cooper-lab/crema-d-mirror)分批下载 C-MET `test.csv` 实际引用的 2069 个唯一视频。
+镜像固定到 commit `d15eeed6a139e9724483ed9a2fc4643f88708b79`。
+
 完整笔记本共有 26 个阶段，按顺序覆盖：
 
 ```text
@@ -38,13 +48,18 @@ GPU 与真实 Drive 门禁
 - 推荐 Colab：A100 40GB/80GB，并打开高内存运行时。
 - 4060 8GB：适合读代码和小规模排错，不适合官方 batch size 的完整训练。
 - 32GB M5 Mac：适合论文学习、代码阅读和轻量检查；官方 CUDA 主流程不能等价训练。
-- Drive：原始数据、处理后视频和特征可能占用数百 GB，建议至少预留 1TB。
+- 默认公开流式流程不会把约 900GB 的 MEAD 原始 tar 复制进你的 Drive；每次只在 Colab 本地盘暂存一个约 19GB 的身份包。
+- 约 180GB 可用 Drive 是合理起点，但最终占用取决于视频压缩率与生成结果数量；每个大阶段后都要查看 Notebook 打印的剩余空间。
+- 若要永久保存完整 MEAD/CREMA-D 原始仓库、所有中间 checkpoint 和全部评估缓存，才建议准备 1TB 以上空间。
 
 训练不会直接从 Drive 读取数万个小文件。笔记本先构建精简训练缓存，再解压到 `/content` 本地盘；checkpoint、TensorBoard、进度和报告仍写回 Drive。
+
+主实验和两组消融仍每 1000 step 保存一次用于断线恢复，但会自动只保留最近 3 份、每 5 万 step 里程碑和最终 checkpoint，避免三组 20 万步训练写满 Drive。
 
 ## 已实现的主方法链路
 
 - 数据发现、官方 EDTalk 裁脸、256x256、25 FPS、16 kHz 单声道 WAV。
+- MEAD 官方公共目录全身份预检、逐身份流式复制/解包、身份级 Drive 状态；CREMA-D 按清单分批 Git LFS 下载并只修复缺失文件。
 - 裁脸后的 MP4 与 WAV 从同一个时间片段导出；预处理 schema v2 会自动重做旧版可能音画错位的产物，并用状态文件断点继续。
 - MEAD 官方 train 43 个身份、test 4 个身份的数据门禁。
 - emotion2vec+large 与 EDTalk 表情/姿态/唇形特征抽取、shape 和 NaN/Inf 检查；NPY 先写临时文件，EDTalk 三件套用事务标记防止断线混入新旧特征。
@@ -89,7 +104,7 @@ BENCHMARK_EMOTION_PROTOCOL = "dataset"
 
 ```text
 MyDrive/C-MET-full/
-  raw/                         # 用户自行取得的原始数据
+  raw/                         # 仅 manual 模式使用的原始数据
   dataset/                     # 处理后的 MEAD / CREMA-D
   official_model_files/        # 官方 EDTalk 与 C-MET 权重
   cache/                       # 精简训练缓存
@@ -124,6 +139,7 @@ scripts/
   install_colab_dependencies.py
   download_pretrained_weights.py
   verify_colab_environment.py
+  prepare_public_datasets.py
   prepare_datasets.py
   extract_emotion2vec_features.py
   extract_edtalk_features.py

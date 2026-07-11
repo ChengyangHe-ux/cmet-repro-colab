@@ -15,6 +15,7 @@ from pathlib import Path
 
 
 OFFICIAL_COMMIT = "0ca437cf7a8129c6a5dca1e2667a588410822bbe"
+REQUIRED_SYSTEM_COMMANDS = ["ffmpeg", "ffprobe", "git", "git-lfs"]
 
 
 def mounted_paths() -> set[str]:
@@ -74,8 +75,11 @@ def main() -> None:
         except Exception as exc:
             issues.append(f"Drive 目录不可写：{exc}")
 
-    for command in ["ffmpeg", "ffprobe", "git"]:
-        if shutil.which(command) is None:
+    system_commands = {}
+    for command in REQUIRED_SYSTEM_COMMANDS:
+        command_path = shutil.which(command)
+        system_commands[command] = command_path
+        if command_path is None:
             issues.append(f"系统命令不可用：{command}")
 
     for module_name in [
@@ -163,6 +167,7 @@ def main() -> None:
         "expected_commit": args.expected_commit,
         "drive_root": str(drive_root),
         "drive_mounted": drive_mounted,
+        "system_commands": system_commands,
         "package_versions": package_versions,
         "required_files": [str(path) for path in required_files],
         "imports": imports,

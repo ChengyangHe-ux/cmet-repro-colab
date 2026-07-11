@@ -228,6 +228,8 @@ def migration_cutoff(
         return None, False
     if compatible and isinstance(state.get("migration_cutoff_ns"), int):
         return int(state["migration_cutoff_ns"]), False
+    if compatible and "migration_cutoff_ns" in state:
+        return None, False
     return time.time_ns(), True
 
 
@@ -400,6 +402,11 @@ def main() -> None:
     parser.add_argument("--limit", type=int, help="只处理发现结果中的前 N 个视频")
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument(
+        "--partial-run",
+        action="store_true",
+        help="当前只处理全数据的一部分，不把全局预处理状态提前标记为 complete",
+    )
+    parser.add_argument(
         "--trust-existing-media",
         action="store_true",
         help="不自动重做旧版 official 预处理产物；仅在你确认现有 MP4/WAV 已严格对齐时使用",
@@ -436,7 +443,8 @@ def main() -> None:
     started_new_migration = False
     if args.crop_mode == "official" and not args.trust_existing_media:
         cutoff_ns, started_new_migration = migration_cutoff(state, args.dataset, args.crop_mode)
-        if not args.dry_run:
+        should_write_state = not args.partial_run or state is None or started_new_migration
+        if not args.dry_run and should_write_state:
             state = {
                 "schema_version": PREPROCESS_SCHEMA_VERSION,
                 "dataset": args.dataset,
@@ -465,13 +473,14 @@ def main() -> None:
         "schema_version": PREPROCESS_SCHEMA_VERSION,
         "crop_mode": args.crop_mode,
         "legacy_repair_enabled": args.crop_mode == "official" and not args.trust_existing_media,
+        "partial_run": args.partial_run,
         "dry_run": args.dry_run,
         "counts": counts,
         "results": [asdict(result) for result in results],
     }
     if not args.dry_run:
         write_json_atomic(report_path, report)
-        if state is not None and args.limit is None and not counts["failed"]:
+        if state is not None and not args.partial_run and args.limit is None and not counts["failed"]:
             state["status"] = "complete"
             state["completed_jobs"] = len(jobs)
             write_json_atomic(state_path, state)

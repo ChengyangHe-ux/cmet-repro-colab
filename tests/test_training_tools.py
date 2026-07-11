@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import importlib.util
 import shutil
 import subprocess
@@ -41,10 +42,14 @@ class PatchTest(unittest.TestCase):
             self.patch.patch_dataset(root)
             second = (root / "train.py").read_text(), (root / "src/dataset_emo12.py").read_text()
             self.assertEqual(first, second)
+            ast.parse(first[0])
             self.assertIn("--resume", first[0])
             self.assertIn("dataset_root=args.dataset_root", first[0])
             self.assertIn("temporary_path = checkpoint_path + '.tmp'", first[0])
             self.assertIn("os.replace(temporary_path, checkpoint_path)", first[0])
+            self.assertIn("--checkpoint_keep_recent", first[0])
+            self.assertIn("def prune_checkpoints", first[0])
+            self.assertIn("milestone_interval=args.checkpoint_milestone_interval", first[0])
             self.assertIn("emotion_1 in self.except_emotions or emotion_2", first[1])
 
     def test_video_io_patch_preserves_official_resize_path(self) -> None:
@@ -111,6 +116,33 @@ class PatchTest(unittest.TestCase):
             self.assertNotIn("}, checkpoint_path)", patched)
             self.assertIn("}, temporary_path)", patched)
             self.assertIn("os.replace(temporary_path, checkpoint_path)", patched)
+            self.assertIn("def prune_checkpoints", patched)
+
+    def test_checkpoint_pruning_keeps_recent_and_milestones(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            shutil.copy2(OFFICIAL / "train.py", root / "train.py")
+            self.patch.patch_train(root)
+            tree = ast.parse((root / "train.py").read_text(encoding="utf-8"))
+            functions = [
+                node
+                for node in tree.body
+                if isinstance(node, ast.FunctionDef) and node.name in {"checkpoint_step", "prune_checkpoints"}
+            ]
+            namespace = {"Path": Path}
+            exec(compile(ast.Module(body=functions, type_ignores=[]), "checkpoint_pruning", "exec"), namespace)
+
+            checkpoint_root = root / "checkpoints"
+            checkpoint_root.mkdir()
+            for step in range(1, 11):
+                (checkpoint_root / f"run_checkpoint_step{step:09d}.pth").write_bytes(b"checkpoint")
+            namespace["prune_checkpoints"](checkpoint_root, keep_recent=2, milestone_interval=5)
+
+            remaining = sorted(
+                namespace["checkpoint_step"](path)
+                for path in checkpoint_root.glob("*_checkpoint_step*.pth")
+            )
+            self.assertEqual(remaining, [5, 9, 10])
 
     def test_inference_patch_uses_requested_feature_count(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -177,6 +209,8 @@ class TrainingWrapperTest(unittest.TestCase):
             self.assertIn('"2"', text)
             self.assertIn('"--max_eval_batches"', text)
             self.assertIn('"--evaluate_interval"', text)
+            self.assertIn('"--checkpoint_keep_recent"', text)
+            self.assertIn('"3"', text)
             self.assertIn('"status": "dry_run"', text)
 
     @unittest.skipUnless(OFFICIAL.is_dir(), "local official C-MET checkout is unavailable")
@@ -203,6 +237,9 @@ class TrainingWrapperTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             text = (output / "manifests" / "paper_main_seed42.json").read_text(encoding="utf-8")
             self.assertIn('"200000"', text)
+            self.assertIn('"--checkpoint_keep_recent"', text)
+            self.assertIn('"--checkpoint_milestone_interval"', text)
+            self.assertIn('"50000"', text)
 
 
 class ColabInstallerTest(unittest.TestCase):
@@ -244,6 +281,9 @@ class ColabEnvironmentTest(unittest.TestCase):
     def test_drive_root_must_be_under_my_drive(self) -> None:
         self.assertTrue(self.module.path_is_in_my_drive(Path("/content/drive/MyDrive/C-MET-full")))
         self.assertFalse(self.module.path_is_in_my_drive(Path("/content/C-MET-full")))
+
+    def test_environment_gate_requires_git_lfs(self) -> None:
+        self.assertIn("git-lfs", self.module.REQUIRED_SYSTEM_COMMANDS)
 
 
 if __name__ == "__main__":

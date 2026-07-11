@@ -7,8 +7,8 @@
 你需要：
 
 - Colab A100 40GB/80GB，高内存运行时。
-- 可写的 Google Drive，建议至少 1TB 可用空间。
-- 按许可证自行获取的 MEAD 和 CREMA-D 原始数据。
+- 可写的 Google Drive；默认公开流式流程下，约 180GB 可用空间可以开始，但需持续观察实际占用。
+- 把 MEAD 官方 Part0 公共文件夹添加为 MyDrive 快捷方式；CREMA-D 由脚本按 benchmark 清单自动下载。
 - 从第 0 格开始按顺序运行，不跳过环境或数据门禁。
 
 官方论文使用单张 RTX 3090 24GB；A100 40GB 满足显存要求。完整流程不能在 8GB 4060 或 MPS Mac 上等价运行。
@@ -17,8 +17,6 @@
 
 ```text
 MyDrive/C-MET-full/
-  raw/MEAD/
-  raw/CREMA-D/
   dataset/MEAD/FPS25/
   dataset/CREMA_D/FPS25/
   official_model_files/
@@ -27,7 +25,18 @@ MyDrive/C-MET-full/
   qualitative_runs/
   benchmark_runs/
   reports/
+
+MyDrive/MEAD/                  # 官方 Part0 文件夹快捷方式，不占用你的 Drive 配额
 ```
+
+默认配置：
+
+```python
+DATA_SOURCE = "public"
+MEAD_SHARED_ROOT = MY_DRIVE / "MEAD"
+```
+
+若你已经自行取得完整原始数据，才改为 `DATA_SOURCE="manual"`，使用 `raw/MEAD` 和 `raw/CREMA-D`。
 
 官方仓库固定为：
 
@@ -37,7 +46,23 @@ MyDrive/C-MET-full/
 
 ## 3. 数据准备
 
-### 3.1 Smoke test
+### 3.1 一次性来源预检
+
+先在浏览器打开：
+
+```text
+https://drive.google.com/drive/folders/1GwXP-KpWOxOenOxITTsURJZQ_1pkd4-j
+```
+
+选择“整理 -> 添加快捷方式”，放到 MyDrive 根目录并保持名称 `MEAD`。然后运行：
+
+```python
+RUN_MEAD_SOURCE_CHECK = True
+```
+
+预检必须一次性找到 C-MET 官方 train/test 的 47 个身份和对应 `video.tar`，但不会复制、解压或预处理。这样不会跑到第几十个身份才发现快捷方式不完整。
+
+### 3.2 Smoke test
 
 依次打开：
 
@@ -46,14 +71,14 @@ RUN_MEAD_PREP_SMOKE = True
 RUN_CREMAD_PREP_SMOKE = True
 ```
 
-每个数据集只处理 2 条视频。通过标准：
+每个数据集只处理 2 条视频。公开 MEAD smoke 会保留第一个身份的本地 tar，紧接着运行 full 时可直接复用。通过标准：
 
 - 官方 EDTalk 裁脸器能找到人脸轨迹。
 - 输出 MP4 为 256x256、25 FPS。
 - 输出 WAV 为 16 kHz、单声道。
 - 报告中 `failed == 0`。
 
-### 3.2 Full preprocess
+### 3.3 Full preprocess
 
 Smoke 成功后打开：
 
@@ -64,6 +89,20 @@ RUN_FULL_MEDIA_GATE = True
 ```
 
 默认官方裁脸模式会让裁后 MP4 和 WAV 从同一个临时时间片段导出，避免旧流程中“视频已裁短、音频仍来自完整原片”的错位。输出目录中的 `.cmet_prepare_state.json` 记录 schema v2 升级进度；Colab 断线后直接重跑同一开关，只处理尚未升级或尚未完成的条目。只有你已经人工确认旧媒体严格对齐时，才在命令行使用 `--trust-existing-media` 跳过迁移。
+
+公开 MEAD 的执行方式：
+
+- 每次只把一个身份的约 19GB `video.tar` 顺序复制到 `/content/cmet_public_data`。
+- 只提取 `front`、官方 Common/Generic 编号，处理完成后删除该身份的临时 tar 和原片。
+- 每个身份的完成状态写入 Drive；已完成的身份会检查 670 对 MP4/WAV 后再跳过，缺一条只修复该身份。
+- `.part` 可以在同一 Colab 运行时内继续复制；若运行时被彻底删除，本地 `.part` 会丢失，但此前完成并写入 Drive 的身份不会重做。
+
+公开 CREMA-D 的执行方式：
+
+- 从官方 Git LFS 镜像只拉取 `test.csv` 使用的 2069 个唯一 `.flv`。
+- 镜像固定到 `d15eeed6a139e9724483ed9a2fc4643f88708b79`。
+- LFS 路径按 200 个一批下载，断线重跑只补处理后仍缺失的文件。
+- full 成功后删除 `/content` 中的 Git LFS 源仓库，只保留 Drive 中处理后的 MP4/WAV。
 
 MEAD 只处理官方 train/test 身份及 Common/Generic 编号。官方划分实际为：
 
@@ -209,6 +248,16 @@ balance = focal_mse
 ```
 
 checkpoint 先写入同目录 `.tmp`，成功后原子替换正式文件；自动续训会忽略零字节 checkpoint。
+
+为防止 Drive 被写满，完整实验默认：
+
+```text
+每 1000 step 保存一次
+永久保留最近 3 份
+永久保留 50000/100000/150000/200000 step 里程碑
+```
+
+清理只发生在新 checkpoint 原子写入成功之后，因此不会先删掉唯一可恢复点。
 
 ### 6.4 论文损失消融
 

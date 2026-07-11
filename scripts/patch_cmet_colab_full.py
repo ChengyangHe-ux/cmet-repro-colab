@@ -251,12 +251,32 @@ def patch_dataset(root: Path) -> None:
 def patch_train(root: Path) -> None:
     path = root / "train.py"
     text = read(path)
-    text = replace_once(
+    text = replace_once_from_variants(
         text,
-        """    parser.add_argument('--seed', type=int, default=42)
+        (
+            """    parser.add_argument('--seed', type=int, default=42)
 
     args = parser.parse_args()
 """,
+            """    parser.add_argument('--seed', type=int, default=42)
+    parser.add_argument('--dataset_root', type=str, default='./dataset/MEAD/FPS25')
+    parser.add_argument('--run_name', type=str, default=None)
+    parser.add_argument('--output_dir', type=str, default=None)
+    parser.add_argument('--tensorboard_dir', type=str, default='./tensorboard_runs')
+    parser.add_argument('--resume', type=str, default=None)
+    parser.add_argument('--max_steps', type=int, default=None)
+    parser.add_argument('--max_eval_batches', type=int, default=None)
+    parser.add_argument('--eval_epochs', type=int, default=25)
+    parser.add_argument('--batch_size', type=int, default=None)
+    parser.add_argument('--batch_size_val', type=int, default=None)
+    parser.add_argument('--num_workers', type=int, default=None)
+    parser.add_argument('--num_epochs', type=int, default=None)
+    parser.add_argument('--evaluate_interval', type=int, default=None)
+    parser.add_argument('--checkpoint_interval', type=int, default=None)
+
+    args = parser.parse_args()
+""",
+        ),
         """    parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--dataset_root', type=str, default='./dataset/MEAD/FPS25')
     parser.add_argument('--run_name', type=str, default=None)
@@ -272,6 +292,8 @@ def patch_train(root: Path) -> None:
     parser.add_argument('--num_epochs', type=int, default=None)
     parser.add_argument('--evaluate_interval', type=int, default=None)
     parser.add_argument('--checkpoint_interval', type=int, default=None)
+    parser.add_argument('--checkpoint_keep_recent', type=int, default=None)
+    parser.add_argument('--checkpoint_milestone_interval', type=int, default=None)
 
     args = parser.parse_args()
 """,
@@ -291,35 +313,57 @@ def patch_train(root: Path) -> None:
 """,
         path,
     )
-    text = replace_once_from_variants(
-        text,
+    checkpoint_marker = "# --- C-MET 可恢复 checkpoint 保留策略 ---"
+    if checkpoint_marker not in text:
+        pattern = r"def save_checkpoint\(.*?\n\n\ndef fix_seed"
+        replacement = '''# --- C-MET 可恢复 checkpoint 保留策略 ---
+def checkpoint_step(path):
+    try:
+        return int(Path(path).stem.rsplit('step', 1)[1])
+    except (IndexError, ValueError):
+        return -1
+
+
+def prune_checkpoints(checkpoint_dir, keep_recent=None, milestone_interval=None):
+    if keep_recent is None:
+        return
+    checkpoints = sorted(
         (
-            '''    if os.path.isfile(checkpoint_path):
-        os.remove(checkpoint_path)
-    optimizer_state = optimizer.state_dict() if save_optimizer_state else None
-    torch.save({
-        "state_dict": model.state_dict(),
-        "optimizer": optimizer_state,
-        "global_step": step,
-        "global_epoch": epoch,
-    }, checkpoint_path)
-''',
-            '''    if os.path.isfile(checkpoint_path):
-        os.remove(checkpoint_path)
-    optimizer_state = optimizer.state_dict() if save_optimizer_state else None
-    torch.save({
-        "state_dict": model.state_dict(),
-        "optimizer": optimizer_state,
-        "global_step": step,
-        "global_epoch": epoch,
-        "python_random_state": random.getstate(),
-        "numpy_random_state": np.random.get_state(),
-        "torch_random_state": torch.get_rng_state(),
-        "cuda_random_state": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
-    }, checkpoint_path)
-''',
+            (checkpoint_step(path), path)
+            for path in Path(checkpoint_dir).glob('*_checkpoint_step*.pth')
+            if path.is_file() and path.stat().st_size > 0
         ),
-        '''    optimizer_state = optimizer.state_dict() if save_optimizer_state else None
+        key=lambda item: item[0],
+    )
+    if not checkpoints:
+        return
+    keep_recent = max(int(keep_recent), 0)
+    keep_paths = {checkpoints[-1][1]}
+    if keep_recent:
+        keep_paths.update(path for _, path in checkpoints[-keep_recent:])
+    if milestone_interval is not None and int(milestone_interval) > 0:
+        interval = int(milestone_interval)
+        keep_paths.update(path for step, path in checkpoints if step > 0 and step % interval == 0)
+    for _, path in checkpoints:
+        if path not in keep_paths:
+            path.unlink()
+            print('Removed checkpoint:', path)
+
+
+def save_checkpoint(
+    model,
+    optimizer,
+    step,
+    checkpoint_dir,
+    epoch,
+    save_optimizer_state=True,
+    prefix='',
+    keep_recent=None,
+    milestone_interval=None,
+):
+    checkpoint_path = os.path.join(
+        checkpoint_dir, "{}_epoch_{}_checkpoint_step{:09d}.pth".format(prefix, epoch, step))
+    optimizer_state = optimizer.state_dict() if save_optimizer_state else None
     temporary_path = checkpoint_path + '.tmp'
     if os.path.isfile(temporary_path):
         os.remove(temporary_path)
@@ -334,9 +378,14 @@ def patch_train(root: Path) -> None:
         "cuda_random_state": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
     }, temporary_path)
     os.replace(temporary_path, checkpoint_path)
-''',
-        path,
-    )
+    print("Saved checkpoint:", checkpoint_path)
+    prune_checkpoints(checkpoint_dir, keep_recent, milestone_interval)
+
+
+def fix_seed'''
+        text, count = re.subn(pattern, replacement, text, count=1, flags=re.DOTALL)
+        if count != 1:
+            raise RuntimeError(f"无法给上游训练 checkpoint 逻辑打补丁：{path}")
     text = replace_once(
         text,
         (
@@ -444,14 +493,27 @@ def patch_train(root: Path) -> None:
 """,
         path,
     )
-    text = replace_once(
+    text = replace_once_from_variants(
         text,
-        """        for step, (e2v, ED_ref, ED_neu, ED_emo, emo_dir, emo_label, e2v_emo, e2v_neu) in pbar:
+        (
+            """        for step, (e2v, ED_ref, ED_neu, ED_emo, emo_dir, emo_label, e2v_emo, e2v_neu) in pbar:
             B, T = emo_dir.size(0), emo_dir.size(1)
 """,
-        """        for step, (e2v, ED_ref, ED_neu, ED_emo, emo_dir, emo_label, e2v_emo, e2v_neu) in pbar:
+            """        for step, (e2v, ED_ref, ED_neu, ED_emo, emo_dir, emo_label, e2v_emo, e2v_neu) in pbar:
             if args.max_steps is not None and global_step >= args.max_steps:
                 save_checkpoint(connector, optimizer, global_step, checkpoint_dir, global_epoch)
+                writer.close()
+                return
+            B, T = emo_dir.size(0), emo_dir.size(1)
+""",
+        ),
+        """        for step, (e2v, ED_ref, ED_neu, ED_emo, emo_dir, emo_label, e2v_emo, e2v_neu) in pbar:
+            if args.max_steps is not None and global_step >= args.max_steps:
+                save_checkpoint(
+                    connector, optimizer, global_step, checkpoint_dir, global_epoch,
+                    keep_recent=args.checkpoint_keep_recent,
+                    milestone_interval=args.checkpoint_milestone_interval,
+                )
                 writer.close()
                 return
             B, T = emo_dir.size(0), emo_dir.size(1)
@@ -459,23 +521,35 @@ def patch_train(root: Path) -> None:
         path,
     )
     text = text.replace(".cuda(non_blocking=True)", ".to(device, non_blocking=device.type == 'cuda')")
-    text = replace_once(
+    text = replace_once_from_variants(
         text,
-        """            if global_step % checkpoint_interval == 0:
+        (
+            """            if global_step % checkpoint_interval == 0:
                 save_checkpoint(connector, optimizer, global_step, checkpoint_dir, global_epoch)
             if global_step % evaluate_interval == 0 or global_step == 100:
                 with torch.no_grad():
                     evaluate(connector, val_data_loader, global_step, writer)
 """,
-        """            if global_step > 0 and global_step % checkpoint_interval == 0:
+            """            if global_step > 0 and global_step % checkpoint_interval == 0:
                 save_checkpoint(connector, optimizer, global_step, checkpoint_dir, global_epoch)
+            if global_step > 0 and (global_step % evaluate_interval == 0 or global_step == 100):
+                with torch.no_grad():
+                    evaluate(connector, val_data_loader, global_step, writer, args, device)
+""",
+        ),
+        """            if global_step > 0 and global_step % checkpoint_interval == 0:
+                save_checkpoint(
+                    connector, optimizer, global_step, checkpoint_dir, global_epoch,
+                    keep_recent=args.checkpoint_keep_recent,
+                    milestone_interval=args.checkpoint_milestone_interval,
+                )
             if global_step > 0 and (global_step % evaluate_interval == 0 or global_step == 100):
                 with torch.no_grad():
                     evaluate(connector, val_data_loader, global_step, writer, args, device)
 """,
         path,
     )
-    text = replace_once(
+    text = replace_once_from_variants(
         text,
         (
             "        global_epoch += 1\n"
@@ -483,11 +557,25 @@ def patch_train(root: Path) -> None:
             "        \n"
             "def evaluate(connector, val_data_loader, global_step, writer):\n"
             "    connector.eval()\n"
-            "    eval_epochs = 25\n"
+            "    eval_epochs = 25\n",
+            """        global_epoch = epoch + 1
+
+    save_checkpoint(connector, optimizer, global_step, checkpoint_dir, global_epoch)
+    writer.close()
+
+
+def evaluate(connector, val_data_loader, global_step, writer, args, device):
+    connector.eval()
+    eval_epochs = args.eval_epochs
+""",
         ),
         """        global_epoch = epoch + 1
 
-    save_checkpoint(connector, optimizer, global_step, checkpoint_dir, global_epoch)
+    save_checkpoint(
+        connector, optimizer, global_step, checkpoint_dir, global_epoch,
+        keep_recent=args.checkpoint_keep_recent,
+        milestone_interval=args.checkpoint_milestone_interval,
+    )
     writer.close()
 
 

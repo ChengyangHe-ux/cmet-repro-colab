@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import importlib.util
+import io
+import json
 import sys
+import tarfile
 import tempfile
 import unittest
 from pathlib import Path
@@ -207,6 +210,16 @@ class PrepareDatasetsTest(unittest.TestCase):
             self.assertTrue(self.module.needs_legacy_refresh(job, cutoff))
             self.assertFalse(self.module.needs_legacy_refresh(job, None))
 
+    def test_in_progress_state_with_null_cutoff_does_not_start_global_migration(self) -> None:
+        state = {
+            "schema_version": self.module.PREPROCESS_SCHEMA_VERSION,
+            "dataset": "mead",
+            "crop_mode": "official",
+            "status": "in_progress",
+            "migration_cutoff_ns": None,
+        }
+        self.assertEqual(self.module.migration_cutoff(state, "mead", "official"), (None, False))
+
     def test_zero_byte_outputs_are_not_treated_as_complete(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -227,6 +240,327 @@ class PrepareDatasetsTest(unittest.TestCase):
             self.assertEqual(result.status, "prepared")
             self.assertGreater(video.stat().st_size, 0)
             self.assertGreater(audio.stat().st_size, 0)
+
+    def test_partial_run_does_not_downgrade_complete_prepare_state(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            raw = root / "raw"
+            raw.mkdir()
+            source = raw / "1001_DFA_HAP_XX.flv"
+            source.write_bytes(b"source")
+            out = root / "out"
+            out.mkdir()
+            state_path = out / self.module.STATE_FILENAME
+            complete_state = {
+                "schema_version": self.module.PREPROCESS_SCHEMA_VERSION,
+                "dataset": "crema-d",
+                "crop_mode": "official",
+                "status": "complete",
+            }
+            state_path.write_text(json.dumps(complete_state), encoding="utf-8")
+
+            class FakeCropper:
+                def __init__(self, _root) -> None:
+                    pass
+
+                def crop(self, _source, target) -> None:
+                    target.write_bytes(b"cropped")
+
+            def fake_run(command, dry_run) -> None:
+                self.assertFalse(dry_run)
+                Path(command[-1]).write_bytes(b"media")
+
+            argv = [
+                "prepare_datasets.py",
+                "--dataset",
+                "crema-d",
+                "--raw-root",
+                str(raw),
+                "--out-root",
+                str(out),
+                "--cmet-root",
+                str(root),
+                "--crop-mode",
+                "official",
+                "--partial-run",
+            ]
+            with (
+                mock.patch.object(sys, "argv", argv),
+                mock.patch.object(self.module, "OfficialCropper", FakeCropper),
+                mock.patch.object(self.module, "run", side_effect=fake_run),
+            ):
+                self.module.main()
+
+            self.assertEqual(json.loads(state_path.read_text(encoding="utf-8")), complete_state)
+
+
+class PublicDatasetPrepareTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.module = load_script("prepare_public_datasets")
+
+    @staticmethod
+    def add_tar_file(archive: tarfile.TarFile, name: str, payload: bytes = b"video") -> None:
+        info = tarfile.TarInfo(name)
+        info.size = len(payload)
+        archive.addfile(info, io.BytesIO(payload))
+
+    def test_mead_member_parser_keeps_only_front_official_subset(self) -> None:
+        valid = self.module.parse_mead_member("M003/video/front/happy/level_2/021.mp4")
+        self.assertIsNotNone(valid)
+        assert valid is not None
+        self.assertEqual((valid.speaker, valid.emotion, valid.level, valid.stem), ("M003", "happy", "level_2", "021"))
+        self.assertIsNone(self.module.parse_mead_member("M003/video/left_30/happy/level_2/021.mp4"))
+        self.assertIsNone(self.module.parse_mead_member("M003/video/front/happy/level_2/031.mp4"))
+        self.assertIsNone(self.module.parse_mead_member("M003/video/front/neutral/level_2/001.mp4"))
+
+    def test_extract_mead_identity_maps_base_archive_to_official_alias(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            archive_path = root / "video.tar"
+            with tarfile.open(archive_path, "w") as archive:
+                self.add_tar_file(archive, "M026/video/front/happy/level_1/001.mp4", b"keep")
+                self.add_tar_file(archive, "M026/video/left_30/happy/level_1/001.mp4", b"drop")
+                self.add_tar_file(archive, "M026/video/front/happy/level_1/031.mp4", b"drop")
+            outputs = self.module.extract_mead_identity(archive_path, "M026-2", root / "raw")
+            self.assertEqual(len(outputs), 1)
+            self.assertEqual(
+                outputs[0].relative_to(root / "raw").as_posix(),
+                "M026-2/video/front/happy/level_1/001.mp4",
+            )
+            self.assertEqual(outputs[0].read_bytes(), b"keep")
+
+    def test_extract_mead_identity_prefers_exact_sub_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            archive_path = root / "video.tar"
+            with tarfile.open(archive_path, "w") as archive:
+                self.add_tar_file(archive, "M026-1/video/front/happy/level_1/001.mp4", b"wrong")
+                self.add_tar_file(archive, "M026-2/video/front/happy/level_1/001.mp4", b"right")
+            outputs = self.module.extract_mead_identity(archive_path, "M026-2", root / "raw")
+            self.assertEqual(len(outputs), 1)
+            self.assertEqual(outputs[0].read_bytes(), b"right")
+
+    def test_extract_mead_identity_skips_existing_processed_pair(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            archive_path = root / "video.tar"
+            with tarfile.open(archive_path, "w") as archive:
+                self.add_tar_file(archive, "M003/video/front/happy/level_1/001.mp4")
+            processed = root / "processed" / "M003" / "front" / "happy" / "level_1"
+            processed.mkdir(parents=True)
+            (processed / "001.mp4").write_bytes(b"video")
+            (processed / "001.wav").write_bytes(b"audio")
+            outputs = self.module.extract_mead_identity(
+                archive_path,
+                "M003",
+                root / "raw",
+                processed_root=root / "processed",
+            )
+            self.assertEqual(outputs, [])
+
+    def test_extract_mead_identity_rebuilds_pair_older_than_migration_cutoff(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            archive_path = root / "video.tar"
+            with tarfile.open(archive_path, "w") as archive:
+                self.add_tar_file(archive, "M003/video/front/happy/level_1/001.mp4")
+            processed = root / "processed" / "M003" / "front" / "happy" / "level_1"
+            processed.mkdir(parents=True)
+            (processed / "001.mp4").write_bytes(b"video")
+            (processed / "001.wav").write_bytes(b"audio")
+            cutoff_ns = max(
+                (processed / "001.mp4").stat().st_mtime_ns,
+                (processed / "001.wav").stat().st_mtime_ns,
+            ) + 1
+            outputs = self.module.extract_mead_identity(
+                archive_path,
+                "M003",
+                root / "raw",
+                processed_root=root / "processed",
+                processed_minimum_mtime_ns=cutoff_ns,
+            )
+            self.assertEqual(len(outputs), 1)
+
+    def test_ensure_mead_prepare_state_reuses_migration_cutoff(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            cutoff_ns, started = self.module.ensure_mead_prepare_state(root)
+            self.assertTrue(started)
+            self.assertIsInstance(cutoff_ns, int)
+            repeated_cutoff_ns, repeated_started = self.module.ensure_mead_prepare_state(root)
+            self.assertEqual(repeated_cutoff_ns, cutoff_ns)
+            self.assertFalse(repeated_started)
+
+    def test_mead_complete_identity_requires_all_670_media_pairs(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            for emotion in self.module.MEAD_EMOTIONS:
+                levels = ["level_1"] if emotion == "neutral" else sorted(self.module.MEAD_LEVELS)
+                maximum = 40 if emotion == "neutral" else 30
+                for level in levels:
+                    folder = root / "M003" / "front" / emotion / level
+                    folder.mkdir(parents=True, exist_ok=True)
+                    for number in range(1, maximum + 1):
+                        (folder / f"{number:03d}.mp4").write_bytes(b"video")
+                        (folder / f"{number:03d}.wav").write_bytes(b"audio")
+            self.assertTrue(self.module.mead_identity_output_complete(root, "M003"))
+            (root / "M003" / "front" / "happy" / "level_2" / "021.wav").unlink()
+            self.assertFalse(self.module.mead_identity_output_complete(root, "M003"))
+
+    def test_mead_complete_identity_respects_migration_cutoff(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            for emotion in self.module.MEAD_EMOTIONS:
+                levels = ["level_1"] if emotion == "neutral" else sorted(self.module.MEAD_LEVELS)
+                maximum = 40 if emotion == "neutral" else 30
+                for level in levels:
+                    folder = root / "M003" / "front" / emotion / level
+                    folder.mkdir(parents=True, exist_ok=True)
+                    for number in range(1, maximum + 1):
+                        (folder / f"{number:03d}.mp4").write_bytes(b"video")
+                        (folder / f"{number:03d}.wav").write_bytes(b"audio")
+            cutoff_ns = max(path.stat().st_mtime_ns for path in root.rglob("*.*")) + 1
+            self.assertFalse(self.module.mead_identity_output_complete(root, "M003", cutoff_ns))
+
+    def test_cremad_processed_pair_uses_flat_output_layout(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "1001_DFA_HAP_XX.mp4").write_bytes(b"video")
+            (root / "1001_DFA_HAP_XX.wav").write_bytes(b"audio")
+            self.assertTrue(self.module.cremad_media_complete(root, "1001_DFA_HAP_XX.flv"))
+
+    def test_cremad_lfs_pull_is_chunked(self) -> None:
+        names = [f"{number:04d}_DFA_HAP_XX.flv" for number in range(1, 6)]
+        commands = []
+        with (
+            tempfile.TemporaryDirectory() as temp,
+            mock.patch.object(self.module, "run", side_effect=lambda command, cwd=None: commands.append(command)),
+            mock.patch.object(self.module, "is_lfs_pointer", return_value=False),
+        ):
+            repo = Path(temp)
+            video_root = repo / "VideoFlash"
+            video_root.mkdir()
+            for name in names:
+                (video_root / name).write_bytes(b"video")
+            self.module.pull_cremad_files(repo, names, chunk_size=2)
+        self.assertEqual(len(commands), 3)
+        self.assertTrue(all(command[:3] == ["git", "lfs", "pull"] for command in commands))
+
+    def test_cremad_default_commit_is_pinned(self) -> None:
+        self.assertEqual(len(self.module.CREMAD_MIRROR_COMMIT), 40)
+        int(self.module.CREMAD_MIRROR_COMMIT, 16)
+
+    def test_stage_archive_resumes_partial_copy(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "source.tar"
+            source.write_bytes(b"abcdefghij")
+            target = root / "work" / "video.tar"
+            target.parent.mkdir()
+            (target.parent / "video.tar.part").write_bytes(b"abcd")
+            result = self.module.stage_archive(source, target, reserve_bytes=0)
+            self.assertEqual(result.read_bytes(), source.read_bytes())
+            self.assertFalse((target.parent / "video.tar.part").exists())
+
+    def test_stage_archive_resumes_incomplete_target_from_older_run(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "source.tar"
+            source.write_bytes(b"abcdefghij")
+            target = root / "work" / "video.tar"
+            target.parent.mkdir()
+            target.write_bytes(b"abcd")
+            result = self.module.stage_archive(source, target, reserve_bytes=0)
+            self.assertEqual(result.read_bytes(), source.read_bytes())
+            self.assertFalse((target.parent / "video.tar.part").exists())
+
+    def test_resolve_mead_archives_checks_all_identities_and_reuses_base(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            archive = root / "M026" / "video.tar"
+            archive.parent.mkdir()
+            archive.write_bytes(b"tar")
+            result = self.module.resolve_mead_archives(root, ["M026-1", "M026-2"])
+            self.assertEqual(result, {"M026-1": archive, "M026-2": archive})
+
+    def test_cremad_manifest_maps_processed_mp4_to_official_flv(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            manifest = Path(temp) / "test.csv"
+            manifest.write_text(
+                "source_video_path,gt_video_path\n"
+                "./dataset/CREMA_D/FPS25/1001_DFA_NEU_XX.mp4,"
+                "./dataset/CREMA_D/FPS25/1001_DFA_HAP_XX.mp4\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                self.module.read_cremad_manifest_names(manifest),
+                ["1001_DFA_HAP_XX.flv", "1001_DFA_NEU_XX.flv"],
+            )
+
+    def test_run_prepare_dataset_marks_streamed_mead_as_partial(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            commands = []
+            with mock.patch.object(self.module, "run", side_effect=lambda command: commands.append(command)):
+                self.module.run_prepare_dataset(
+                    "mead",
+                    root / "raw",
+                    root / "out",
+                    root / "cmet",
+                    root / "reports" / "M003.json",
+                    speaker="M003",
+                    partial_run=True,
+                )
+            self.assertEqual(len(commands), 1)
+            self.assertIn("--partial-run", commands[0])
+            speaker_path = Path(commands[0][commands[0].index("--speaker-file") + 1])
+            self.assertFalse(speaker_path.exists())
+
+    def test_mead_progress_state_can_skip_completed_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            path = root / "state.json"
+            value = {"identities": {"M003": {"status": "complete"}}}
+            self.module.write_json_atomic(path, value)
+            self.assertEqual(json.loads(path.read_text(encoding="utf-8")), value)
+            self.assertFalse((root / "state.json.tmp").exists())
+
+    def test_mead_completed_count_is_derived_from_identity_states(self) -> None:
+        state = {}
+        identities = {"M003": {"status": "complete"}, "M005": {"status": "failed"}}
+        completed = self.module.update_mead_completed_count(state, identities, ["M003", "M005"])
+        self.assertEqual(completed, 1)
+        self.assertEqual(state["completed_identities"], 1)
+
+    def test_mead_smoke_skips_when_full_dataset_is_already_complete(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            shared = root / "shared"
+            shared.mkdir()
+            out = root / "out"
+            out.mkdir()
+            self.module.write_json_atomic(out / self.module.PREPARE_STATE_FILENAME, {"status": "complete"})
+            archive = root / "video.tar"
+            archive.write_bytes(b"tar")
+            args = mock.Mock(
+                cmet_root=root / "cmet",
+                shared_root=shared,
+                out_root=out,
+                work_root=root / "work",
+                report_root=root / "reports",
+                check_only=False,
+                limit_videos=2,
+                limit_identities=1,
+                keep_work=False,
+            )
+            with (
+                mock.patch.object(self.module, "read_identities", return_value=["M003"]),
+                mock.patch.object(self.module, "resolve_mead_archives", return_value={"M003": archive}),
+                mock.patch.object(self.module, "stage_archive") as stage,
+            ):
+                self.module.prepare_mead(args)
+            stage.assert_not_called()
 
 
 class Emotion2VecTest(unittest.TestCase):

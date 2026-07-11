@@ -1,5 +1,24 @@
 # C-MET 数据结构与官方合同
 
+## 0. 公开来源与临时目录
+
+默认 Notebook 不把完整原始数据复制到用户 Drive：
+
+```text
+MyDrive/MEAD/                         # 官方 Part0 公共文件夹快捷方式
+/content/cmet_public_data/MEAD/       # 当前 MEAD 身份临时 tar 与原片
+/content/cmet_public_data/CREMA-D/    # CREMA-D Git LFS 临时仓库
+MyDrive/C-MET-full/dataset/           # 最终处理数据与特征
+```
+
+MEAD 先对官方 47 个身份做来源预检，再逐身份处理。每个完整身份应有 670 对 MP4/WAV：neutral 40 条，加 7 个非中性情绪 x 3 个 level x 30 条。身份完成状态记录在：
+
+```text
+MyDrive/C-MET-full/reports/mead_public_stream_state.json
+```
+
+CREMA-D 从官方 Git LFS 镜像读取，按 `test.csv` 去重后下载 2069 个 `.flv`，处理后保持扁平目录。full 成功后临时 Git 仓库可以删除。
+
 ## 1. MEAD 训练目录
 
 ```text
@@ -130,6 +149,8 @@ MyDrive/C-MET-full/dataset/MEAD/FPS25
 ```
 
 当前 schema 为 v2。它保证裁后 MP4 和 WAV 从同一个裁后片段导出，并记录旧版数据升级进度。零字节媒体不算完成；每个 MP4/WAV 先写临时文件，成功后再原子替换。断线后重跑同一 full 开关即可继续，不要删除状态文件或从头覆盖全部数据。
+
+公开流式流程在全局 schema 状态之外还检查每个身份/文件的实际 MP4、WAV 和事务标记。即使状态写着完成，只要媒体缺失、为空或存在 `.media_pair.in_progress`，重跑时仍会自动修复。
 
 成对替换期间会创建隐藏事务标记 `.编号.media_pair.in_progress`。如果进程在两次替换之间断线，门禁会报 `incomplete_media_pair`，下一次预处理会强制从同一裁后片段重建 MP4/WAV。
 

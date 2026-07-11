@@ -91,6 +91,37 @@ pandas==2.2.2
 
 ## 4. 数据预处理
 
+### MEAD 官方快捷方式不可见
+
+默认路径是：
+
+```text
+/content/drive/MyDrive/MEAD
+```
+
+处理顺序：
+
+1. 打开 `https://drive.google.com/drive/folders/1GwXP-KpWOxOenOxITTsURJZQ_1pkd4-j`。
+2. 对顶层 `MEAD` 文件夹执行“整理 -> 添加快捷方式”，不要逐个身份添加。
+3. 把快捷方式放到 MyDrive 根目录；若名称或位置不同，只修改 Notebook 的 `MEAD_SHARED_ROOT`。
+4. 重新挂载 Drive，运行 `RUN_MEAD_SOURCE_CHECK=True`。
+
+不要使用匿名 `gdown` 批量下载。大文件可能触发 Google `Too many users have viewed or downloaded this file recently`，而且完整复制原始 tar 会远超当前 Drive 空间。
+
+### MEAD 来源预检缺少某个身份
+
+来源预检会检查 C-MET 官方 47 个身份。特殊身份 `M026-2`、`M032-2`、`M042-1`、`W021-1` 会映射到公共盘中的基础身份目录。若仍报缺失，通常说明添加的是某个子目录而不是顶层 Part0 文件夹。
+
+### MEAD tar 复制中断
+
+- 只停止单元格、运行时仍存在：再次运行同一开关，会从 `/content/cmet_public_data/.../video.tar.part` 继续。
+- 运行时被彻底删除：当前身份的本地 `.part` 会消失，需要重新复制该身份约 19GB；已经写入 Drive 并标记完成的其他身份不会重做。
+- 报本地盘不足：至少需要“tar 剩余大小 + 8GB”可用空间。重启运行时清理 `/content`，不要删除 Drive 中的处理结果和状态报告。
+
+### CREMA-D Git LFS 下载失败
+
+Notebook 会安装 `git-lfs`，按 200 个路径一批下载。网络中断后直接重跑 `RUN_CREMAD_PREP_FULL=True`，脚本会检查 Drive 中已有 MP4/WAV，只补缺失文件。不要删除 `/content/cmet_public_data/CREMA-D`，除非仓库损坏且错误明确说它不是 Git 仓库。
+
 ### 没有发现 MEAD 视频
 
 检查原始路径是否含：
@@ -206,6 +237,17 @@ iic/emotion2vec_plus_large
 ### 最新 checkpoint 是零字节或半文件
 
 新补丁先写 `.tmp`，成功后原子替换正式 `.pth`；自动续训会忽略零字节文件。若你使用旧版本留下损坏文件，将它移动到备份目录后再续训。
+
+### checkpoint 占满 Drive
+
+完整实验默认每 1000 step 保存，但只保留最近 3 份和每 5 万 step 里程碑。先确认 dry-run manifest 的命令中包含：
+
+```text
+--checkpoint_keep_recent 3
+--checkpoint_milestone_interval 50000
+```
+
+如果目录中已有旧版本留下的大量 checkpoint，先更新仓库并正常续训到下一次成功保存；新补丁会在新文件原子落盘后清理非里程碑旧文件。不要在只有一份可用 checkpoint 时手工批量删除。
 
 ### Colab 断线后怎么继续
 

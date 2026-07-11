@@ -85,6 +85,8 @@ def main() -> None:
     parser.add_argument("--num-epochs", type=int)
     parser.add_argument("--evaluate-interval", type=int)
     parser.add_argument("--checkpoint-interval", type=int)
+    parser.add_argument("--checkpoint-keep-recent", type=int)
+    parser.add_argument("--checkpoint-milestone-interval", type=int)
     parser.add_argument("--batch-size", type=int)
     parser.add_argument("--batch-size-val", type=int)
     parser.add_argument("--num-workers", type=int)
@@ -172,6 +174,8 @@ def main() -> None:
     eval_epochs = args.eval_epochs
     evaluate_interval = args.evaluate_interval
     checkpoint_interval = args.checkpoint_interval
+    checkpoint_keep_recent = args.checkpoint_keep_recent
+    checkpoint_milestone_interval = args.checkpoint_milestone_interval
     if args.smoke:
         max_steps = 2 if max_steps is None else max_steps
         batch_size = 2 if batch_size is None else batch_size
@@ -181,8 +185,19 @@ def main() -> None:
         eval_epochs = 1 if eval_epochs is None else eval_epochs
         evaluate_interval = 1 if evaluate_interval is None else evaluate_interval
         checkpoint_interval = 1 if checkpoint_interval is None else checkpoint_interval
+        checkpoint_keep_recent = 3 if checkpoint_keep_recent is None else checkpoint_keep_recent
+        checkpoint_milestone_interval = 0 if checkpoint_milestone_interval is None else checkpoint_milestone_interval
     elif max_steps is None:
         max_steps = experiment.get("max_steps")
+    if not args.smoke:
+        checkpoint_keep_recent = 3 if checkpoint_keep_recent is None else checkpoint_keep_recent
+        checkpoint_milestone_interval = (
+            50000 if checkpoint_milestone_interval is None else checkpoint_milestone_interval
+        )
+    if checkpoint_keep_recent is not None and checkpoint_keep_recent < 0:
+        parser.error("--checkpoint-keep-recent 不能小于 0")
+    if checkpoint_milestone_interval is not None and checkpoint_milestone_interval < 0:
+        parser.error("--checkpoint-milestone-interval 不能小于 0")
 
     command = [
         sys.executable,
@@ -233,6 +248,8 @@ def main() -> None:
         "--num_epochs": args.num_epochs,
         "--evaluate_interval": evaluate_interval,
         "--checkpoint_interval": checkpoint_interval,
+        "--checkpoint_keep_recent": checkpoint_keep_recent,
+        "--checkpoint_milestone_interval": checkpoint_milestone_interval,
     }
     for flag, value in optional.items():
         if value is not None:
