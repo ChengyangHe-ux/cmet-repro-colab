@@ -325,33 +325,39 @@ def mead_identity_output_complete(
 
 
 def extract_mead_identity(
-    archive_path: Path,
+    archive_paths: list[Path],
     identity: str,
     output_root: Path,
     limit_videos: int | None = None,
     processed_root: Path | None = None,
     processed_minimum_mtime_ns: int | None = None,
 ) -> list[Path]:
-    print(f"扫描 {identity}：{archive_path}")
-    with tarfile.open(archive_path, "r:*") as archive:
-        tar_members: dict[str, tarfile.TarInfo] = {}
-        parsed_members = []
-        for member in archive:
-            if not member.isfile():
-                continue
-            parsed = parse_mead_member(member.name)
-            if parsed is None:
-                continue
-            tar_members[member.name] = member
-            parsed_members.append(parsed)
-        selected = select_mead_members(parsed_members, identity)
-        if limit_videos is not None:
-            selected = selected[:limit_videos]
-        if not selected:
-            raise FileNotFoundError(f"{archive_path} 中没有发现 {identity} 的 front 官方视频")
+    selected_items: list[tuple[Path, MeadMember]] = []
+    for archive_path in archive_paths:
+        print(f"扫描 {identity}：{archive_path}")
+        with tarfile.open(archive_path, "r:*") as archive:
+            parsed_members = []
+            for member in archive:
+                if not member.isfile():
+                    continue
+                parsed = parse_mead_member(member.name)
+                if parsed is None:
+                    continue
+                parsed_members.append(parsed)
+            selected = select_mead_members(parsed_members, identity)
+            selected_items.extend((archive_path, item) for item in selected)
 
-        extracted = []
-        for item in selected:
+    selected_items.sort(key=lambda pair: (pair[1].emotion, pair[1].level, int(pair[1].stem), pair[1].member_name))
+    if limit_videos is not None:
+        selected_items = selected_items[:limit_videos]
+    if not selected_items:
+        archives = ", ".join(str(path) for path in archive_paths)
+        raise FileNotFoundError(f"{archives} 中没有发现 {identity} 的 front 官方视频")
+
+    extracted = []
+    opened_archives: dict[Path, tarfile.TarFile] = {}
+    try:
+        for archive_path, item in selected_items:
             if processed_root is not None and processed_media_complete(
                 processed_root,
                 identity,
@@ -371,17 +377,35 @@ def extract_mead_identity(
             if target.is_file() and target.stat().st_size > 0:
                 extracted.append(target)
                 continue
-            source = archive.extractfile(tar_members[item.member_name])
+            archive = opened_archives.get(archive_path)
+            if archive is None:
+                archive = tarfile.open(archive_path, "r:*")
+                opened_archives[archive_path] = archive
+            source = archive.extractfile(item.member_name)
             if source is None:
                 raise RuntimeError(f"无法读取 tar 成员：{item.member_name}")
             with source:
                 copy_member_atomic(source, target)
             extracted.append(target)
+    finally:
+        for archive in opened_archives.values():
+            archive.close()
     print(f"{identity} 已提取 {len(extracted)} 个 front 视频")
     return extracted
 
 
-def find_video_tar(shared_root: Path, identity: str) -> Path:
+def archive_has_mead_media(archive_path: Path) -> bool:
+    with tarfile.open(archive_path, "r:*") as archive:
+        for member in archive:
+            if not member.isfile():
+                continue
+            parsed = parse_mead_member(member.name)
+            if parsed is not None:
+                return True
+    return False
+
+
+def find_video_archives(shared_root: Path, identity: str) -> list[Path]:
     actor_root = shared_root / identity.split("-", 1)[0]
     if not actor_root.is_dir():
         raise FileNotFoundError(
@@ -390,28 +414,38 @@ def find_video_tar(shared_root: Path, identity: str) -> Path:
         )
     direct = actor_root / "video.tar"
     if direct.is_file():
-        return direct
-    matches = sorted(actor_root.rglob("video.tar"))
-    if len(matches) != 1:
-        raise FileNotFoundError(f"{actor_root} 中应有且仅有一个 video.tar，实际找到 {len(matches)} 个")
-    return matches[0]
+        return [direct]
+    matches = sorted(
+        path for path in actor_root.rglob("video*.tar")
+        if path.is_file() and path.name.startswith("video")
+    )
+    if not matches:
+        raise FileNotFoundError(f"{actor_root} 中没有找到 video.tar 或 video_*.tar")
+    media_archives = [path for path in matches if archive_has_mead_media(path)]
+    if not media_archives:
+        sample = ", ".join(path.name for path in matches[:10])
+        raise FileNotFoundError(f"{actor_root} 中找到 tar 但没有 front 官方视频，示例：{sample}")
+    return media_archives
 
 
-def resolve_mead_archives(shared_root: Path, identities: list[str]) -> dict[str, Path]:
+def resolve_mead_archives(shared_root: Path, identities: list[str]) -> dict[str, list[Path]]:
     archives = {}
     archives_by_base = {}
     for identity in identities:
         base_identity = identity.split("-", 1)[0]
         if base_identity not in archives_by_base:
-            archive = find_video_tar(shared_root, identity)
-            if archive.stat().st_size <= 0:
-                raise RuntimeError(f"MEAD video.tar 为空：{archive}")
-            archives_by_base[base_identity] = archive
+            identity_archives = find_video_archives(shared_root, identity)
+            for archive in identity_archives:
+                if archive.stat().st_size <= 0:
+                    raise RuntimeError(f"MEAD video tar 为空：{archive}")
+            archives_by_base[base_identity] = identity_archives
         archives[identity] = archives_by_base[base_identity]
-    total_size = sum(path.stat().st_size for path in archives_by_base.values())
+    total_size = sum(path.stat().st_size for paths in archives_by_base.values() for path in paths)
+    total_archives = sum(len(paths) for paths in archives_by_base.values())
     print(
         f"MEAD 来源预检通过：{len(identities)} 个官方身份，"
-        f"{len(archives_by_base)} 个唯一 video.tar，合计 {total_size / 1024**3:.1f} GB"
+        f"{len(archives_by_base)} 个唯一身份目录，{total_archives} 个 video tar，"
+        f"合计 {total_size / 1024**3:.1f} GB"
     )
     return archives
 
@@ -507,7 +541,7 @@ def prepare_mead(args: argparse.Namespace) -> None:
     write_json_atomic(state_path, state)
 
     for identity in identities:
-        archive_path = archives[identity]
+        archive_paths = archives[identity]
         identity_work = work_root / "MEAD" / identity
         if args.limit_videos is None and mead_identity_output_complete(
             out_root,
@@ -516,7 +550,7 @@ def prepare_mead(args: argparse.Namespace) -> None:
         ):
             identity_states[identity] = {
                 "status": "complete",
-                "archive": str(archive_path),
+                "archives": [str(path) for path in archive_paths],
                 "recovered_from_outputs": True,
             }
             update_mead_completed_count(state, identity_states, all_identities)
@@ -531,9 +565,12 @@ def prepare_mead(args: argparse.Namespace) -> None:
         raw_root = identity_work / "raw"
         succeeded = False
         try:
-            local_archive = stage_archive(archive_path, identity_work / "video.tar")
+            local_archives = [
+                stage_archive(archive_path, identity_work / archive_path.name)
+                for archive_path in archive_paths
+            ]
             extracted = extract_mead_identity(
-                local_archive,
+                local_archives,
                 identity,
                 raw_root,
                 args.limit_videos,
@@ -556,7 +593,7 @@ def prepare_mead(args: argparse.Namespace) -> None:
         except BaseException as exc:
             identity_states[identity] = {
                 "status": "failed",
-                "archive": str(archive_path),
+                "archives": [str(path) for path in archive_paths],
                 "error": repr(exc),
             }
             update_mead_completed_count(state, identity_states, all_identities)
@@ -565,7 +602,7 @@ def prepare_mead(args: argparse.Namespace) -> None:
         else:
             identity_states[identity] = {
                 "status": "smoke_complete" if args.limit_videos is not None else "complete",
-                "archive": str(archive_path),
+                "archives": [str(path) for path in archive_paths],
                 "processed_videos_this_run": len(extracted),
                 "report": str(report),
             }
