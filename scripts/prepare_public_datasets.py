@@ -2,8 +2,8 @@
 """从官方公开来源为 C-MET 流式准备 MEAD 与 CREMA-D。
 
 MEAD 不复制完整原始数据到用户 Drive。脚本读取用户添加到 Drive 的官方
-Part0 公共目录快捷方式，每次只从一个身份的 video.tar 中提取 C-MET 使用的
-front/Common/Generic 视频，预处理成功后删除 Colab 临时文件。
+Part0 公共目录快捷方式，每次只从一个身份的 video.tar 或 video_*.tar 分卷中
+提取 C-MET 使用的 front/Common/Generic 视频，预处理成功后删除 Colab 临时文件。
 
 CREMA-D 使用官方 Git LFS 镜像，只下载 C-MET test.csv 实际引用的视频。
 """
@@ -325,13 +325,15 @@ def mead_identity_output_complete(
 
 
 def extract_mead_identity(
-    archive_paths: list[Path],
+    archive_paths: Path | list[Path],
     identity: str,
     output_root: Path,
     limit_videos: int | None = None,
     processed_root: Path | None = None,
     processed_minimum_mtime_ns: int | None = None,
 ) -> list[Path]:
+    if isinstance(archive_paths, Path):
+        archive_paths = [archive_paths]
     selected_items: list[tuple[Path, MeadMember]] = []
     for archive_path in archive_paths:
         print(f"扫描 {identity}：{archive_path}")

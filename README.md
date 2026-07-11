@@ -48,7 +48,7 @@ GPU 与真实 Drive 门禁
 - 推荐 Colab：A100 40GB/80GB，并打开高内存运行时。
 - 4060 8GB：适合读代码和小规模排错，不适合官方 batch size 的完整训练。
 - 32GB M5 Mac：适合论文学习、代码阅读和轻量检查；官方 CUDA 主流程不能等价训练。
-- 默认公开流式流程不会把约 900GB 的 MEAD 原始 tar 复制进你的 Drive；每次只在 Colab 本地盘暂存一个约 19GB 的身份包。
+- 默认公开流式流程不会把约 900GB 的 MEAD 原始 tar 复制进你的 Drive；每次只在 Colab 本地盘暂存一个身份的 `video.tar` 或 `video_*.tar` 分卷。
 - 约 180GB 可用 Drive 是合理起点，但最终占用取决于视频压缩率与生成结果数量；每个大阶段后都要查看 Notebook 打印的剩余空间。
 - 若要永久保存完整 MEAD/CREMA-D 原始仓库、所有中间 checkpoint 和全部评估缓存，才建议准备 1TB 以上空间。
 

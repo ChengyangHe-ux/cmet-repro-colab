@@ -482,7 +482,20 @@ class PublicDatasetPrepareTest(unittest.TestCase):
             archive.parent.mkdir()
             archive.write_bytes(b"tar")
             result = self.module.resolve_mead_archives(root, ["M026-1", "M026-2"])
-            self.assertEqual(result, {"M026-1": archive, "M026-2": archive})
+            self.assertEqual(result, {"M026-1": [archive], "M026-2": [archive]})
+
+    def test_find_video_archives_supports_split_video_tars(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            actor = root / "M042"
+            actor.mkdir()
+            with tarfile.open(actor / "video_1.tar", "w") as archive:
+                self.add_tar_file(archive, "M042/video/left_30/happy/level_1/001.mp4")
+            with tarfile.open(actor / "video_2.tar", "w") as archive:
+                self.add_tar_file(archive, "M042/video/front/happy/level_1/001.mp4")
+
+            result = self.module.find_video_archives(root, "M042")
+            self.assertEqual(result, [actor / "video_2.tar"])
 
     def test_cremad_manifest_maps_processed_mp4_to_official_flv(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
