@@ -56,6 +56,25 @@ GPU 与真实 Drive 门禁
 
 主实验和两组消融仍每 1000 step 保存一次用于断线恢复，但会自动只保留最近 3 份、每 5 万 step 里程碑和最终 checkpoint，避免三组 20 万步训练写满 Drive。
 
+## Colab 终端推荐跑法
+
+如果 Notebook 页面里临时单元格被改乱，优先用 Colab 终端跑脚本。先确认已经挂载 Google Drive，然后执行：
+
+```bash
+cd /content/cmet-repro-colab
+git pull --ff-only
+bash scripts/colab_run_stage1_data_smoke.sh
+```
+
+第一阶段无报错后，再执行完整数据预处理：
+
+```bash
+cd /content/cmet-repro-colab
+bash scripts/colab_run_stage2_full_preprocess.sh
+```
+
+这两个脚本会自动固定官方 C-MET commit、检查 `MyDrive/MEAD` 快捷方式、支持 `video.tar` 和 `video_*.tar` 分卷，并把状态报告写到 `MyDrive/C-MET-full/reports`。
+
 ## 已实现的主方法链路
 
 - 数据发现、官方 EDTalk 裁脸、256x256、25 FPS、16 kHz 单声道 WAV。
