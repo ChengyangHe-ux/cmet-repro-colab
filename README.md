@@ -1,108 +1,162 @@
-# C-MET 复现 Colab
+# C-MET 中文全流程复现
 
-这是这篇论文的复现仓库：
+论文：**Cross-Modal Emotion Transfer for Emotion Editing in Talking Face Video**，CVPR 2026。
 
-**Cross-Modal Emotion Transfer for Emotion Editing in Talking Face Video**  
-Choi et al., CVPR 2026
-
-这个仓库只放复现流程和工具脚本，不存 C-MET 权重检查点、EDTalk 权重、MEAD 数据，也不直接复制官方 C-MET 源码。Colab 笔记本会在运行时克隆官方仓库。
-
-## 快速开始
-
-如果你只想先看官方预训练权重推理演示，打开：
-
-[演示版 Colab](https://colab.research.google.com/github/ChengyangHe-ux/cmet-repro-colab/blob/main/notebooks/C-MET_Colab_Demo.ipynb)
-
-如果你要做完整全流程复现，打开：
-
-[完整复现 Colab](https://colab.research.google.com/github/ChengyangHe-ux/cmet-repro-colab/blob/main/notebooks/C-MET_Full_Reproduction_Colab.ipynb)
-
-运行环境建议：
+本仓库提供中文 Colab 复现入口和可靠性工具，不复制官方源码、不上传受许可限制的数据，也不存放大模型权重。Colab 会固定克隆官方 C-MET commit：
 
 ```text
-A100 GPU > L4 GPU > T4 GPU
+0ca437cf7a8129c6a5dca1e2667a588410822bbe
 ```
 
-如果 Colab 有高 RAM 选项，也一起打开。
+## 直接开始
 
-Colab 默认 Python 版本可能比作者环境新，所以笔记本不会盲目执行官方完整 `requirements.txt`。演示版安装推理依赖；完整复现版安装训练和预处理核心依赖，并在运行前修复这些常见兼容问题：可选依赖导入、`librosa`/NumPy、`moviepy`/Python 3.12、PyTorch 权重检查点加载默认值，以及 torchvision 缺少旧视频 I/O 接口。
+- [完整复现 Colab](https://colab.research.google.com/github/ChengyangHe-ux/cmet-repro-colab/blob/main/notebooks/C-MET_Full_Reproduction_Colab.ipynb)
+- [官方权重演示 Colab](https://colab.research.google.com/github/ChengyangHe-ux/cmet-repro-colab/blob/main/notebooks/C-MET_Colab_Demo.ipynb)
 
-## 当前两个目标
-
-### 目标 1：演示版复现
-
-先跑官方权重检查点推理，生成这两个视频：
+完整笔记本共有 26 个阶段，按顺序覆盖：
 
 ```text
-C-MET/res/ChatGPT_man3_happy.mp4
-C-MET/res/ChatGPT_man3_sarcastic.mp4
+GPU 与真实 Drive 门禁
+-> 固定官方代码与依赖环境
+-> MEAD / CREMA-D 原始数据预处理
+-> emotion2vec+large 与 EDTalk 特征抽取
+-> 完整数据和模型读取合同检查
+-> Drive 训练缓存与 Colab 本地解压
+-> 2 step 训练/验证/checkpoint 冒烟测试
+-> 20 万 step 主实验与自动续训
+-> 两组论文损失消融
+-> 13 类基础/扩展情绪定性推理
+-> MEAD 1143 条与 CREMA-D 1546 条 benchmark
+-> 视频技术检查与论文指标汇总接口
 ```
 
-`sarcastic` 适合汇报展示，因为论文重点之一就是扩展情绪。
+所有长任务默认关闭。每次只把当前步骤的 `RUN_*` 开关改为 `True`，跑完后再进入下一步。
 
-### 目标 2：完整全流程复现
+## 算力与存储
 
-完整复现要覆盖：
+- 论文训练硬件：单张 RTX 3090 24GB。
+- 推荐 Colab：A100 40GB/80GB，并打开高内存运行时。
+- 4060 8GB：适合读代码和小规模排错，不适合官方 batch size 的完整训练。
+- 32GB M5 Mac：适合论文学习、代码阅读和轻量检查；官方 CUDA 主流程不能等价训练。
+- Drive：原始数据、处理后视频和特征可能占用数百 GB，建议至少预留 1TB。
+
+训练不会直接从 Drive 读取数万个小文件。笔记本先构建精简训练缓存，再解压到 `/content` 本地盘；checkpoint、TensorBoard、进度和报告仍写回 Drive。
+
+## 已实现的主方法链路
+
+- 数据发现、官方 EDTalk 裁脸、256x256、25 FPS、16 kHz 单声道 WAV。
+- 裁脸后的 MP4 与 WAV 从同一个时间片段导出；预处理 schema v2 会自动重做旧版可能音画错位的产物，并用状态文件断点继续。
+- MEAD 官方 train 43 个身份、test 4 个身份的数据门禁。
+- emotion2vec+large 与 EDTalk 表情/姿态/唇形特征抽取、shape 和 NaN/Inf 检查；NPY 先写临时文件，EDTalk 三件套用事务标记防止断线混入新旧特征。
+- 官方训练路径修复、20 万 step 上限、独立实验目录、checkpoint、自动续训和 TensorBoard。
+- checkpoint 临时文件写入后原子替换，避免断线留下半个 `.pth`。
+- 主实验以及论文 Table 6 的 `Lrecon`、`Lrecon + Lcnt` 两组消融。
+- 模型常驻内存的定性与 benchmark 推理、稳定 sample ID、可自动修复末尾断线残片的 JSONL 进度。
+- 训练缓存、训练 manifest、checkpoint、benchmark manifest 和最终 MP4 均先生成临时文件，验证成功后再替换正式产物。
+- benchmark 在加载模型前检查所选视频、音频、权重和情绪特征池。
+- 生成视频分辨率、FPS、时长、音频流等严格技术检查。
+- AITV、FID、FVD、SyncNet confidence、Emotion-FAN 准确率的覆盖率和论文目标值汇总接口。
+
+## Benchmark 情绪协议
+
+笔记本默认使用：
+
+```python
+BENCHMARK_EMOTION_PROTOCOL = "dataset"
+```
+
+- `dataset`：依据论文的 10 条 neutral speech 与 10 条 emotional speech、官方 `Dataset.get_raw_e2v` 和 `test.csv` 重建。MEAD 按测试身份、目标情绪和 `level_1/2/3` 取特征；CREMA-D 按目标情绪和 `HI/LO/MD/XX` 取特征，因此保留语音强度信息。
+- `official-static`：复用官方仓库公开的静态演示语音池。基础情绪池来自官方发布的演示资源，不能表达 `test.csv` 中每条样本的强度，只适合作为官方演示协议对照。
+
+作者没有公开 Table 1 的批量推理脚本，因此 `dataset` 是论文依据下的可审计重建，不应未经作者确认就写成“精确作者 benchmark 协议”。两套协议的 sample ID、视频、manifest、progress 和报告均按协议目录隔离，不能混合汇总。
+
+## 必须诚实区分的范围
+
+仓库可以完整执行 C-MET 主方法的数据、训练、推理和结果汇总链路，但官方没有公开以下精确材料：
+
+- FID/FVD/SyncNet 的完整采样与实现细节。
+- 分别在 MEAD、CREMA-D 上微调的 Emotion-FAN checkpoint。
+- EAT、EAMM、EDTalk、FLOAT 的统一 baseline 环境。
+- PD-FGC 完整源码、权重和推理入口。
+- Qwen2.5-Omni 音频编码器消融代码。
+- 连续情绪编辑脚本、用户研究原始数据与抽样清单。
+
+因此，只有在获得作者对应实现和权重后，才能把五项数值称为“严格论文指标复现”。仓库不会用基础视频检查或自定义分类器冒充论文结果。
+
+## 运行产物
+
+默认保存在：
 
 ```text
-下载完整 MEAD / CREMA-D
--> 裁剪、抽音频、统一 25 FPS
--> 抽 emotion2vec+large 音频特征
--> 抽 EDTalk 表情/姿态/唇形特征
--> 从头训练 C-MET connector
--> 用自训练 checkpoint 批量推理
--> 做指标评估和消融实验
+MyDrive/C-MET-full/
+  raw/                         # 用户自行取得的原始数据
+  dataset/                     # 处理后的 MEAD / CREMA-D
+  official_model_files/        # 官方 EDTalk 与 C-MET 权重
+  cache/                       # 精简训练缓存
+  reproduction_runs/           # manifest、checkpoint、TensorBoard
+  qualitative_runs/            # 13 类定性视频
+  benchmark_runs/              # 按 checkpoint 和协议隔离的视频、manifest、JSONL 进度
+  reports/                     # 数据门禁、技术检查、指标表
+```
+
+推理结果按 checkpoint 文件名隔离，避免中间 checkpoint 的旧视频被 20 万 step checkpoint 误判为已完成。
+
+benchmark 目录进一步按协议隔离：
+
+```text
+benchmark_runs/<checkpoint_source>/<checkpoint_tag>/
+  videos/<emotion_protocol>/<dataset>/
+  manifests/<emotion_protocol>/<dataset>.csv
+  progress/<emotion_protocol>/<dataset>.jsonl
 ```
 
 ## 仓库结构
 
 ```text
 notebooks/
-  C-MET_Colab_Demo.ipynb
   C-MET_Full_Reproduction_Colab.ipynb
+  C-MET_Colab_Demo.ipynb
+configs/
+  colab_requirements.txt
+  experiments.json
+  paper_targets.json
+scripts/
+  install_colab_dependencies.py
+  download_pretrained_weights.py
+  verify_colab_environment.py
+  prepare_datasets.py
+  extract_emotion2vec_features.py
+  extract_edtalk_features.py
+  validate_full_dataset.py
+  build_training_cache.py
+  run_training.py
+  cmet_inference_runtime.py
+  run_qualitative_inference.py
+  run_benchmark_inference.py
+  evaluate_videos_basic.py
+  evaluate_paper_metrics.py
 docs/
   full_reproduction_plan.md
   dataset_structure.md
-  metrics_protocol.md
-  reproduction_plan.md
-  troubleshooting.md
   evaluation.md
-experiments/logs/
-  experiment_template.md
-scripts/
-  check_env.py
-  patch_cmet_colab_full.py
-  validate_full_dataset.py
-  extract_edtalk_features.py
-  batch_inference.py
-  evaluate_videos_basic.py
+  metrics_protocol.md
+  troubleshooting.md
+tests/
 ```
 
-## 为什么不直接放官方 C-MET 源码
+## 本地检查
 
-官方 C-MET 仓库已经提供推理和训练代码。这个仓库负责把 Colab 全流程串起来：
-
-```text
-本仓库 -> Colab 笔记本 -> 克隆官方 C-MET -> 打补丁 -> 数据检查 -> 特征抽取 -> 训练 -> 推理 -> 评估
+```bash
+PYTHONPATH=scripts python3 -m unittest discover -s tests -v
+PYTHONPYCACHEPREFIX=/tmp/cmet-pycache python3 -m compileall -q scripts tests
+git diff --check
 ```
 
-这样 GitHub 仓库更干净，也能避免误传模型权重或生成视频。
+这些是离线结构和逻辑检查，不代表本机已经替你完成 A100 全量训练。A100、真实 MEAD/CREMA-D 和论文外部评估器仍需在 Colab 中执行。
 
-## 面向汇报的里程碑
+## 资料
 
-- [ ] 讲清楚论文 Figure 3。
-- [ ] 跑通官方 happy 演示。
-- [ ] 跑通官方 sarcastic 演示。
-- [ ] 运行 Colab 笔记本里的评估单元，并保存帧截图表。
-- [ ] 记录硬件和依赖问题。
-- [ ] 说明为什么完整训练需要更强显存，最好 24GB 以上。
-- [ ] 准备完整 MEAD / CREMA-D 数据。
-- [ ] 跑完整复现 Colab。
-- [ ] 保存训练曲线、checkpoint、批量生成结果和指标 CSV。
-
-## 链接
-
-- 官方项目页：https://chanhyeok-choi.github.io/C-MET/
-- 官方代码：https://github.com/ChanHyeok-Choi/C-MET
-- 论文：https://arxiv.org/abs/2604.07786
-- Hugging Face 模型：https://huggingface.co/coldhyuk/C-MET
+- [官方项目页](https://chanhyeok-choi.github.io/C-MET/)
+- [官方代码](https://github.com/ChanHyeok-Choi/C-MET)
+- [论文](https://arxiv.org/abs/2604.07786)
+- [官方模型](https://huggingface.co/coldhyuk/C-MET)

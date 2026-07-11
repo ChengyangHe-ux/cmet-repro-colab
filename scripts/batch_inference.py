@@ -27,7 +27,7 @@ DEFAULT_EMOTIONS = [
 
 EXTENDED_DIR_MAP = {
     "charismatic": "charismatic",
-    "desirous": "desire",
+    "desirous": "desirous",
     "empathetic": "empathetic",
     "envious": "envious",
     "romantic": "romantic",

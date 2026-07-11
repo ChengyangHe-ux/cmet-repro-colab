@@ -1,0 +1,72 @@
+{
+  "source": "C-MET arXiv:2604.07786v2, Tables 1, 6, and 8",
+  "table1": {
+    "paper_main": {
+      "mead": {
+        "aitv": 2.643,
+        "fid": 90.804,
+        "fvd": 329.862,
+        "sync_confidence": 7.9996,
+        "emotion_accuracy": 55.91
+      },
+      "crema-d": {
+        "aitv": 1.561,
+        "fid": 50.028,
+        "fvd": 309.828,
+        "sync_confidence": 6.2887,
+        "emotion_accuracy": 43.47
+      }
+    }
+  },
+  "table6": {
+    "ablation_recon_only": {
+      "mead": {
+        "aitv": 2.643,
+        "fid": 88.951,
+        "fvd": 325.926,
+        "sync_confidence": 7.9892,
+        "emotion_accuracy": 49.43
+      }
+    },
+    "ablation_recon_cnt": {
+      "mead": {
+        "aitv": 2.643,
+        "fid": 88.082,
+        "fvd": 321.961,
+        "sync_confidence": 8.0018,
+        "emotion_accuracy": 53.46
+      }
+    },
+    "paper_main": {
+      "mead": {
+        "aitv": 2.643,
+        "fid": 90.804,
+        "fvd": 329.862,
+        "sync_confidence": 7.9996,
+        "emotion_accuracy": 55.91
+      }
+    }
+  },
+  "table8": {
+    "paper_main": {
+      "mead": {
+        "angry": 78.62,
+        "contempt": 3.01,
+        "disgusted": 72.05,
+        "fear": 44.65,
+        "happy": 75.0,
+        "sad": 45.45,
+        "surprised": 73.33,
+        "average": 55.91
+      },
+      "crema-d": {
+        "angry": 4.85,
+        "disgusted": 8.56,
+        "fear": 35.56,
+        "happy": 78.57,
+        "sad": 88.64,
+        "average": 43.47
+      }
+    }
+  }
+}

@@ -1,253 +1,369 @@
-# C-MET 完整全流程复现计划
+# C-MET 完整复现执行计划
 
-这份计划针对“不缩水”的复现目标：不是只跑官方演示，而是尽量复现论文从数据处理、训练、推理到评估的完整链路。
+本计划对应 `notebooks/C-MET_Full_Reproduction_Colab.ipynb`。目标不是缩小版 demo，而是在公开材料允许的范围内执行 C-MET 主方法的完整数据、训练、推理和评估链路。
 
-## 0. 当前状态
+## 1. 开始前
 
-已经完成：
+你需要：
 
-- 官方预训练权重推理演示。
-- happy 和 sarcastic 两个生成视频。
-- Colab 兼容补丁。
-- 基础视频技术检查。
+- Colab A100 40GB/80GB，高内存运行时。
+- 可写的 Google Drive，建议至少 1TB 可用空间。
+- 按许可证自行获取的 MEAD 和 CREMA-D 原始数据。
+- 从第 0 格开始按顺序运行，不跳过环境或数据门禁。
 
-还没完成：
+官方论文使用单张 RTX 3090 24GB；A100 40GB 满足显存要求。完整流程不能在 8GB 4060 或 MPS Mac 上等价运行。
 
-- 完整 MEAD / CREMA-D 数据预处理。
-- 从头训练 C-MET connector。
-- 用自训练权重批量推理。
-- 论文级定量指标。
-- 消融实验。
-- 对比基线。
-
-## 1. 硬件和存储
-
-推荐配置：
-
-- GPU：A100 40GB/80GB 优先，4090 24GB 可以尝试，T4/L4 不建议跑完整训练。
-- 内存：64GB 以上更稳。
-- 存储：至少 1TB，最好 2TB。MEAD、CREMA-D、裁剪视频、音频、特征、checkpoint 会占很多空间。
-- 运行位置：Colab Pro/Pro+ 或自己的 CUDA 服务器。
-
-Mac 的作用：
-
-- 读代码、写报告、整理仓库、做轻量检查。
-- 不建议用 Mac 跑官方训练，因为官方代码有大量 `.cuda()` 路径。
-
-## 2. 完整复现阶段
-
-### 阶段 A：准备数据
-
-目标：拿到完整 MEAD 和 CREMA-D。
-
-需要做：
-
-- 下载 MEAD。
-- 下载 CREMA-D。
-- 记录下载链接、版本、目录结构。
-- 保留原始数据，不要直接在原始目录上改。
-
-产物：
+## 2. 路径约定
 
 ```text
-Google Drive/C-MET-full/raw/MEAD/
-Google Drive/C-MET-full/raw/CREMA-D/
+MyDrive/C-MET-full/
+  raw/MEAD/
+  raw/CREMA-D/
+  dataset/MEAD/FPS25/
+  dataset/CREMA_D/FPS25/
+  official_model_files/
+  cache/cmet_training_cache.tar
+  reproduction_runs/
+  qualitative_runs/
+  benchmark_runs/
+  reports/
 ```
 
-### 阶段 B：裁剪和统一帧率
-
-目标：把视频处理成官方训练需要的 talking-face 视频。
-
-要求：
-
-- front view。
-- 25 FPS。
-- 人脸裁剪稳定。
-- 每条视频有对应 `.wav`。
-
-产物示例：
+官方仓库固定为：
 
 ```text
-dataset/MEAD/FPS25/M005/front/happy/level_3/001.mp4
-dataset/MEAD/FPS25/M005/front/happy/level_3/001.wav
+0ca437cf7a8129c6a5dca1e2667a588410822bbe
 ```
 
-### 阶段 C：抽 emotion2vec+large 音频特征
+## 3. 数据准备
 
-目标：为每条 `.wav` 生成语音情绪向量。
+### 3.1 Smoke test
 
-命令：
+依次打开：
 
-```bash
-python extract_e2v+L.py --data_root ./dataset/MEAD/FPS25
+```python
+RUN_MEAD_PREP_SMOKE = True
+RUN_CREMAD_PREP_SMOKE = True
 ```
 
-产物：
+每个数据集只处理 2 条视频。通过标准：
+
+- 官方 EDTalk 裁脸器能找到人脸轨迹。
+- 输出 MP4 为 256x256、25 FPS。
+- 输出 WAV 为 16 kHz、单声道。
+- 报告中 `failed == 0`。
+
+### 3.2 Full preprocess
+
+Smoke 成功后打开：
+
+```python
+RUN_MEAD_PREP_FULL = True
+RUN_CREMAD_PREP_FULL = True
+RUN_FULL_MEDIA_GATE = True
+```
+
+默认官方裁脸模式会让裁后 MP4 和 WAV 从同一个临时时间片段导出，避免旧流程中“视频已裁短、音频仍来自完整原片”的错位。输出目录中的 `.cmet_prepare_state.json` 记录 schema v2 升级进度；Colab 断线后直接重跑同一开关，只处理尚未升级或尚未完成的条目。只有你已经人工确认旧媒体严格对齐时，才在命令行使用 `--trust-existing-media` 跳过迁移。
+
+MEAD 只处理官方 train/test 身份及 Common/Generic 编号。官方划分实际为：
 
 ```text
-emotion2vec+large_features/001.npy
+train: 43 个身份
+test: 4 个身份
 ```
 
-### 阶段 D：抽 EDTalk 表情、姿态、唇形特征
-
-目标：为每条视频生成训练 C-MET 需要的视觉表达特征。
-
-仓库脚本：
-
-```bash
-python repro_tools/extract_edtalk_features.py \
-  --cmet-root . \
-  --data-root ./dataset/MEAD/FPS25 \
-  --batch-size 100
-```
-
-产物：
+官方 benchmark 实际为：
 
 ```text
-001_ED_exp.npy
-001_ED_pose.npy
-001_ED_lip.npy
+MEAD: 1143 条样本
+CREMA-D: 1546 条样本
 ```
 
-### 阶段 E：检查数据是否可训练
+## 4. 特征抽取
 
-命令：
+按顺序执行：
 
-```bash
-python repro_tools/validate_full_dataset.py \
-  --cmet-root . \
-  --mead-root ./dataset/MEAD/FPS25 \
-  --strict
+```python
+RUN_MEAD_E2V_SMOKE = True
+RUN_CREMAD_E2V_SMOKE = True
+RUN_EDTALK_SMOKE = True
+```
+
+确认两条数据成功后，再运行：
+
+```python
+RUN_MEAD_E2V_FULL = True
+RUN_CREMAD_E2V_FULL = True
+RUN_EDTALK_FULL = True
+RUN_FEATURE_GATE = True
+```
+
+MEAD emotion2vec 特征同时用于训练和 MEAD benchmark；CREMA-D emotion2vec 特征用于保留其情绪与 `HI/LO/MD/XX` 强度。两套 full 都完成后再运行 benchmark 特征门禁。
+
+产物合同：
+
+```text
+001.mp4
+001.wav
+001_ED_exp.npy       # (T, 10)
+001_ED_pose.npy      # (T, 6)
+001_ED_lip.npy       # (T, 20)
+emotion2vec+large_features/001.npy  # (1024,)
+```
+
+`RUN_FEATURE_GATE` 会分别执行：
+
+- `training`：检查完整媒体和三类 EDTalk/e2v 特征。
+- `model`：按官方 DataLoader 实际读取的编号子集检查训练合同。
+
+只有两份报告都为 `ready: true` 才进入训练。
+
+emotion2vec NPY 会在 shape/有限值校验后原子替换；EDTalk 的 exp/pose/lip 三件套使用事务标记。若 Colab 在三件套替换中断线，下一次门禁会报 `incomplete_edtalk_features`，直接重跑 `RUN_EDTALK_FULL` 即可整组修复。
+
+## 5. 训练缓存
+
+先打开：
+
+```python
+BUILD_TRAIN_CACHE = True
+```
+
+缓存只包含训练实际读取的：
+
+- `*_ED_exp.npy`。
+- `emotion2vec+large_features/*.npy`。
+- 零字节 MP4 路径标记。
+
+官方训练用 MP4 路径建立样本索引，不解码视频，因此不需要把全部视频复制到 Colab 本地盘。
+
+缓存先写隐藏临时 tar，成员数和可读性验证通过后才替换正式缓存；断线不会破坏上一份可用 tar。
+
+每次新运行时打开：
+
+```python
+EXTRACT_TRAIN_CACHE = True
+RUN_LOCAL_CACHE_GATE = True
+```
+
+训练从 `/content/cmet_training_data/MEAD/FPS25` 读取，checkpoint 和日志写回 Drive。
+
+## 6. 训练
+
+### 6.1 Dry-run
+
+笔记本会自动生成四份 dry-run manifest：
+
+- 主实验 smoke：2 step、1 个验证 batch、每步 checkpoint。
+- 主实验：20 万 step。
+- `Lrecon`：20 万 step。
+- `Lrecon + Lcnt`：20 万 step。
+
+Dry-run 使用独立目录，不覆盖正式训练状态。
+
+### 6.2 Smoke train
+
+首次运行：
+
+```python
+RUN_TRAIN_SMOKE = True
+```
+
+中断后：
+
+```python
+RESUME_TRAIN_SMOKE = True
 ```
 
 通过标准：
 
-- train/test split 的 ID 都存在。
-- `.mp4`、`.wav`、`emotion2vec+large_features/*.npy`、`*_ED_exp.npy`、`*_ED_pose.npy`、`*_ED_lip.npy` 都存在。
+- 完成 2 个优化 step。
+- 至少执行 1 个验证 batch。
+- 生成非空 checkpoint。
 
-### 阶段 F：从头训练 C-MET connector
+### 6.3 主实验
 
-官方入口：
+首次运行：
 
-```bash
-python train.py --config ./configs/train.yaml
+```python
+RUN_MAIN_TRAIN = True
 ```
 
-建议第一轮完整训练使用官方默认：
+Colab 中断后重新挂载 Drive、克隆、安装、打补丁、解压缓存，再打开：
 
-```bash
-python train.py \
-  --config ./configs/train.yaml \
-  --mode mean \
-  --num_feats 10 \
-  --direction average \
-  --ID same \
-  --feature_type ED \
-  --audio_encoder emotion2vec+large \
-  --train bidir \
-  --lambda_cnt 0.1 \
-  --lambda_dir 0.05 \
-  --balance focal_mse
+```python
+RESUME_MAIN_TRAIN = True
 ```
 
-训练时记录：
-
-- GPU 型号。
-- batch size。
-- 总 step。
-- checkpoint 路径。
-- TensorBoard 曲线。
-- `running_MSE_loss`、`running_Cnt_loss`、`running_Dir_loss`。
-- `eval_MSE_loss`、`eval_EC_loss`、`eval_Vel_loss`、`eval_Dir_loss`、`eval_Cnt_loss`。
-
-### 阶段 G：用自训练 checkpoint 批量推理
-
-命令：
-
-```bash
-python repro_tools/batch_inference.py \
-  --cmet-root . \
-  --checkpoint ./checkpoints/你的训练目录/xxx_checkpoint_step000xxxxxx.pth \
-  --out-dir ./res/full_repro
-```
-
-产物：
+主实验配置：
 
 ```text
-res/full_repro/ChatGPT_man3_happy.mp4
-res/full_repro/ChatGPT_man3_sarcastic.mp4
-...
+max_steps = 200000
+lambda_cnt = 0.1
+lambda_dir = 0.05
+mode = mean
+num_feats = 10
+direction = average
+ID = same
+train = bidir
+balance = focal_mse
 ```
 
-### 阶段 H：评估
+checkpoint 先写入同目录 `.tmp`，成功后原子替换正式文件；自动续训会忽略零字节 checkpoint。
 
-基础技术检查：
+### 6.4 论文损失消融
 
-```bash
-python repro_tools/evaluate_videos_basic.py \
-  --video-dir ./res/full_repro \
-  --out-csv ./res/full_repro/video_basic_metrics.csv
+```python
+RUN_ABLATION_RECON_ONLY = True
+RUN_ABLATION_RECON_CNT = True
 ```
 
-论文级指标需要继续补：
-
-- 唇音同步：SyncNet / LSE-C / LSE-D。
-- 身份保持：ArcFace cosine similarity。
-- 情绪准确率：人脸情绪分类器。
-- 视频质量：FID / FVD / LPIPS。
-
-### 阶段 I：消融实验
-
-至少跑这些组：
+对应论文 Table 6：
 
 ```text
-默认完整模型
-lambda_cnt=0
-lambda_dir=0
-train=unidir
-ID=diff
-direction=raw
-direction=first
-direction=max
-except_emotions happy
-except_emotions sad
+ablation_recon_only: lambda_cnt=0.0, lambda_dir=0.0
+ablation_recon_cnt:  lambda_cnt=0.1, lambda_dir=0.0
+paper_main:          lambda_cnt=0.1, lambda_dir=0.05
 ```
 
-每组都要保存：
+三组都固定为 20 万 step，保存在独立目录。
 
-- 训练命令。
-- checkpoint。
-- TensorBoard 曲线。
-- 生成视频。
-- 指标 CSV。
+## 7. 推理
 
-## 3. 仓库里的执行入口
+完整复现选择：
 
-完整 Colab：
+```python
+CHECKPOINT_SOURCE = "self_trained"
+```
+
+默认只有达到 20 万 step 的自训练 checkpoint 才允许进入正式推理。中间 checkpoint 仅用于诊断时，可显式打开：
+
+```python
+ALLOW_PARTIAL_SELF_TRAINED_CHECKPOINT = True
+```
+
+### 7.1 定性结果
+
+```python
+RUN_QUAL_BASIC = True
+RUN_QUAL_EXTENDED = True
+RUN_QUAL_TECH_CHECK = True
+```
+
+生成 7 种基础情绪和 6 种扩展情绪。模型每组只加载一次，JSONL 记录断点进度。
+
+### 7.2 Benchmark
+
+先保持默认协议：
+
+```python
+BENCHMARK_EMOTION_PROTOCOL = "dataset"
+```
+
+该协议按论文的 10 条 neutral speech 和 10 条 emotional speech 重建：MEAD 按测试身份、情绪和 `level_1/2/3` 建池，CREMA-D 按情绪和 `HI/LO/MD/XX` 建池。若要做官方公开演示资源对照，再改为：
+
+```python
+BENCHMARK_EMOTION_PROTOCOL = "official-static"
+```
+
+`official-static` 使用官方静态演示池，会忽略 `test.csv` 的逐样本强度。作者没有公开 Table 1 的批量推理脚本，因此两者都必须在报告中写明协议名；`dataset` 是依据论文与官方数据读取逻辑重建的强度感知协议，不能未经作者确认声称与作者内部脚本逐项相同。
+
+先跑：
+
+```python
+RUN_MEAD_BENCH_SMOKE = True
+RUN_CREMAD_BENCH_SMOKE = True
+```
+
+成功后：
+
+```python
+RUN_MEAD_BENCH_FULL = True
+RUN_CREMAD_BENCH_FULL = True
+RUN_BENCH_TECH_CHECK = True
+```
+
+每个 checkpoint 使用独立输出目录。脚本会在模型加载前预检全部所选输入、权重和情绪池；中断后读取 JSONL，跳过已完成样本。文件末尾被断线截断的一条 JSON 会被忽略，中间损坏仍会严格报错。
+
+读取末尾断线残片时，脚本会先原子裁掉残片再追加新记录。最终 MP4 也先在隐藏路径完成音视频封装，并通过分辨率、FPS、时长和音视频流检查后才替换正式文件。
+
+同一 checkpoint 下，两套协议也完全隔离：
 
 ```text
-notebooks/C-MET_Full_Reproduction_Colab.ipynb
+videos/<emotion_protocol>/<dataset>/
+manifests/<emotion_protocol>/<dataset>.csv
+progress/<emotion_protocol>/<dataset>.jsonl
 ```
 
-工具脚本：
+## 8. 评估
+
+### 8.1 技术检查
+
+`evaluate_videos_basic.py` 检查：
+
+- MP4 能否被 ffprobe 解码。
+- 分辨率是否为 256x256。
+- FPS 是否为 25。
+- 时长是否大于 0。
+- 是否含音频流。
+
+技术检查不是论文指标。
+
+### 8.2 部分指标汇总
+
+```python
+RUN_PARTIAL_METRIC_SUMMARY = True
+```
+
+可以汇总常驻模型后端记录的本机 AITV 和输出覆盖率，但不能称为作者论文 AITV，除非硬件、计时边界和协议一致。
+
+### 8.3 严格论文指标
+
+外部评估器应生成：
 
 ```text
-scripts/patch_cmet_colab_full.py
-scripts/validate_full_dataset.py
-scripts/extract_edtalk_features.py
-scripts/batch_inference.py
-scripts/evaluate_videos_basic.py
+external_paper_metrics/<checkpoint_tag>/<emotion_protocol>/mead_sample_metrics.csv
+external_paper_metrics/<checkpoint_tag>/<emotion_protocol>/mead_global_metrics.json
+external_paper_metrics/<checkpoint_tag>/<emotion_protocol>/crema-d_sample_metrics.csv
+external_paper_metrics/<checkpoint_tag>/<emotion_protocol>/crema-d_global_metrics.json
 ```
 
-## 4. 最终汇报材料
+外部评估器必须读取同一协议的 manifest，并把其中的 `sample_id` 原样写回，不能把 `dataset` 与 `official-static` 的结果混合。
 
-完整复现最终应该能交付：
+其中：
 
-- 复现环境表。
-- 数据处理流程图。
-- 训练曲线。
-- 自训练 checkpoint 的生成视频。
-- 论文指标复现表。
-- 消融实验表。
-- 失败案例分析。
-- 和官方预训练权重 demo 的对比。
+```text
+sample_metrics.csv: sample_id,sync_confidence,predicted_emotion
+global_metrics.json: aitv,fid,fvd
+```
+
+然后打开：
+
+```python
+RUN_STRICT_PAPER_METRICS = True
+```
+
+脚本会检查情绪协议、清单覆盖率、重复 ID、未知 ID、五项指标完整性，并和论文目标值生成差值表。
+
+## 9. 作者未公开造成的边界
+
+当前无法仅靠官方仓库严格完成：
+
+- 精确 FID/FVD/SyncNet 采样实现。
+- 微调后的 MEAD/CREMA-D Emotion-FAN。
+- PD-FGC + C-MET 完整分支。
+- Qwen2.5-Omni 消融。
+- 连续情绪编辑。
+- 统一 baseline 复现。
+- 用户研究原始投票和抽样清单。
+
+这些是公开材料缺失，不是通过增加 GPU 就能解决。
+
+## 10. 最终交付
+
+- 环境、媒体、特征、缓存门禁报告。
+- 主实验 20 万 step checkpoint 与 TensorBoard。
+- 两组损失消融 20 万 step checkpoint。
+- 13 类定性视频。
+- MEAD 1143 条、CREMA-D 1546 条 benchmark 视频与进度。
+- 技术检查 CSV/JSON。
+- 获得作者评估器后生成的严格论文指标表。

@@ -25,3 +25,5 @@ res/
 .DS_Store
 .idea/
 .vscode/
+.plan/
+tmp/

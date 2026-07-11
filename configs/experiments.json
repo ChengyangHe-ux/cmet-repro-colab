@@ -1,0 +1,44 @@
+{
+  "paper_main": {
+    "description": "论文主实验：Lrecon + Lcnt + Ldir",
+    "max_steps": 200000,
+    "lambda_cnt": 0.1,
+    "lambda_dir": 0.05,
+    "mode": "mean",
+    "num_feats": 10,
+    "direction": "average",
+    "ID": "same",
+    "feature_type": "ED",
+    "audio_encoder": "emotion2vec+large",
+    "train": "bidir",
+    "balance": "focal_mse"
+  },
+  "ablation_recon_only": {
+    "description": "论文 Table 6 消融：仅 Lrecon",
+    "max_steps": 200000,
+    "lambda_cnt": 0.0,
+    "lambda_dir": 0.0,
+    "mode": "mean",
+    "num_feats": 10,
+    "direction": "average",
+    "ID": "same",
+    "feature_type": "ED",
+    "audio_encoder": "emotion2vec+large",
+    "train": "bidir",
+    "balance": "focal_mse"
+  },
+  "ablation_recon_cnt": {
+    "description": "论文 Table 6 消融：Lrecon + Lcnt",
+    "max_steps": 200000,
+    "lambda_cnt": 0.1,
+    "lambda_dir": 0.0,
+    "mode": "mean",
+    "num_feats": 10,
+    "direction": "average",
+    "ID": "same",
+    "feature_type": "ED",
+    "audio_encoder": "emotion2vec+large",
+    "train": "bidir",
+    "balance": "focal_mse"
+  }
+}

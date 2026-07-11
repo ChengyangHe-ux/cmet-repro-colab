@@ -1,8 +1,11 @@
-# C-MET 复现计划
+# C-MET 历史 Demo 计划
+
+> [!WARNING]
+> 这是仓库早期仅验证官方权重推理的历史计划，不是当前全流程复现入口。完整数据、训练、消融、benchmark 和评估请使用 `notebooks/C-MET_Full_Reproduction_Colab.ipynb`，并阅读 `docs/full_reproduction_plan.md`。
 
 ## 复现范围
 
-第一阶段只复现官方权重检查点推理，不做完整训练。
+以下内容仅保留用于理解早期 demo 范围：第一阶段只复现官方权重检查点推理，不做完整训练。
 
 ## 阶段 1：官方演示
 
