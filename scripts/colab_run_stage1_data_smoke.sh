@@ -51,8 +51,9 @@ git -C "${CMET_ROOT}" fetch origin "${CMET_COMMIT}"
 git -C "${CMET_ROOT}" switch --detach "${CMET_COMMIT}"
 
 if [[ ! -d "${MEAD_SHARED_ROOT}" ]]; then
-  echo "没有找到 MEAD 官方快捷方式：${MEAD_SHARED_ROOT}"
-  echo "请把 MEAD 官方 Part0 文件夹添加到 MyDrive 根目录，并命名为 MEAD。"
+  echo "没有找到 MEAD 官方数据聚合目录：${MEAD_SHARED_ROOT}"
+  echo "请在 MyDrive 中建立 MEAD 目录，把可访问的官方视频 Part 快捷方式放到其中。"
+  echo "支持 MEAD/身份/video.tar 和 MEAD/Part*/身份/video_*.tar。"
   exit 1
 fi
 

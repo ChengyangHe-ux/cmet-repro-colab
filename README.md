@@ -15,10 +15,12 @@
 
 完整复现默认使用公开数据入口。你只需手工完成一次 MEAD Drive 授权：
 
-1. 打开 [MEAD 官方 Part0 文件夹](https://drive.google.com/drive/folders/1GwXP-KpWOxOenOxITTsURJZQ_1pkd4-j)。
-2. 选择“整理 -> 添加快捷方式”，放到“我的云端硬盘”根目录并保持名称 `MEAD`。
-3. 在完整 Notebook 中保持 `DATA_SOURCE = "public"`，打开 `RUN_MEAD_SOURCE_CHECK` 做 47 个身份的一次性来源预检。
-4. 依次运行 MEAD/CREMA-D smoke、full、媒体门禁，之后再做特征与训练。
+1. 打开 [MEAD 官方公共文件夹](https://drive.google.com/drive/folders/1GwXP-KpWOxOenOxITTsURJZQ_1pkd4-j)，将你有权访问的视频 Part 添加为 Drive 快捷方式。
+2. 在“我的云端硬盘”建立 `MEAD` 聚合目录：可直接包含身份目录，也可保留 `Part0/身份`、`Part1/身份` 结构。
+3. 在完整 Notebook 中保持 `DATA_SOURCE = "public"`，打开 `RUN_MEAD_SOURCE_CHECK` 做 47 个官方身份的一次性来源预检。预检会一次列出所有缺失身份。
+4. 只有来源预检无报错后，再依次运行 MEAD/CREMA-D smoke、full、媒体门禁，之后再做特征与训练。
+
+> 官方公共目录可能按 Part 分散数据。某个身份目录存在但没有 `video.tar` / `video_*.tar` 时，必须补充包含该身份视频分卷的 Part；重跑脚本不会自动获得缺失数据。
 
 CREMA-D 不需要手工上传。脚本从[官方 Git LFS 镜像](https://gitlab.com/cs-cooper-lab/crema-d-mirror)分批下载 C-MET `test.csv` 实际引用的 2069 个唯一视频。
 镜像固定到 commit `d15eeed6a139e9724483ed9a2fc4643f88708b79`。
@@ -73,7 +75,7 @@ cd /content/cmet-repro-colab
 bash scripts/colab_run_stage2_full_preprocess.sh
 ```
 
-这两个脚本会自动固定官方 C-MET commit、检查 `MyDrive/MEAD` 快捷方式、支持 `video.tar` 和 `video_*.tar` 分卷，并把状态报告写到 `MyDrive/C-MET-full/reports`。
+这两个脚本会自动固定官方 C-MET commit、检查 `MyDrive/MEAD` 聚合目录、支持顶层身份与 `Part*/身份`、支持 `video.tar` 和 `video_*.tar` 分卷，并把状态报告写到 `MyDrive/C-MET-full/reports`。
 
 ## 已实现的主方法链路
 

@@ -8,7 +8,7 @@
 
 - Colab A100 40GB/80GB，高内存运行时。
 - 可写的 Google Drive；默认公开流式流程下，约 180GB 可用空间可以开始，但需持续观察实际占用。
-- 把 MEAD 官方 Part0 公共文件夹添加为 MyDrive 快捷方式；CREMA-D 由脚本按 benchmark 清单自动下载。
+- 把可访问的 MEAD 官方视频 Part 快捷方式聚合到 `MyDrive/MEAD`；CREMA-D 由脚本按 benchmark 清单自动下载。
 - 从第 0 格开始按顺序运行，不跳过环境或数据门禁。
 
 官方论文使用单张 RTX 3090 24GB；A100 40GB 满足显存要求。完整流程不能在 8GB 4060 或 MPS Mac 上等价运行。
@@ -26,7 +26,7 @@ MyDrive/C-MET-full/
   benchmark_runs/
   reports/
 
-MyDrive/MEAD/                  # 官方 Part0 文件夹快捷方式，不占用你的 Drive 配额
+MyDrive/MEAD/                  # 官方 Part/身份快捷方式聚合根目录，不复制原始 tar
 ```
 
 默认配置：
@@ -54,13 +54,13 @@ MEAD_SHARED_ROOT = MY_DRIVE / "MEAD"
 https://drive.google.com/drive/folders/1GwXP-KpWOxOenOxITTsURJZQ_1pkd4-j
 ```
 
-选择“整理 -> 添加快捷方式”，放到 MyDrive 根目录并保持名称 `MEAD`。然后运行：
+选择“整理 -> 添加快捷方式”，把可访问的视频 Part 或身份目录放到 `MyDrive/MEAD`。可以保留 `Part0/身份`、`Part1/身份` 结构。然后运行：
 
 ```python
 RUN_MEAD_SOURCE_CHECK = True
 ```
 
-预检必须一次性找到 C-MET 官方 train/test 的 47 个身份和对应 `video.tar`，但不会复制、解压或预处理。这样不会跑到第几十个身份才发现快捷方式不完整。
+预检必须一次性找到 C-MET 官方 train/test 的 47 个身份和对应 `video.tar` / `video_*.tar`，但不会复制、解压或预处理。脚本支持顶层身份和向下 3 层的 Part 目录，并会一次列出所有缺失身份。只有预检无报错时才进入 smoke。
 
 ### 3.2 Smoke test
 

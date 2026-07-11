@@ -341,6 +341,42 @@ class PublicDatasetPrepareTest(unittest.TestCase):
             self.assertEqual(len(outputs), 1)
             self.assertEqual(outputs[0].read_bytes(), b"right")
 
+    def test_extract_mead_identity_skips_sibling_sub_identity_archive(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            sibling = root / "video_1.tar"
+            target = root / "video_2.tar"
+            with tarfile.open(sibling, "w") as archive:
+                self.add_tar_file(archive, "M026-1/video/front/happy/level_1/001.mp4", b"wrong")
+            with tarfile.open(target, "w") as archive:
+                self.add_tar_file(archive, "M026-2/video/front/happy/level_1/001.mp4", b"right")
+
+            outputs = self.module.extract_mead_identity([sibling, target], "M026-2", root / "raw")
+
+            self.assertEqual(len(outputs), 1)
+            self.assertEqual(outputs[0].read_bytes(), b"right")
+
+    def test_extract_mead_identity_deduplicates_overlapping_part_archives_before_limit(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            first = root / "video_1.tar"
+            second = root / "video_2.tar"
+            with tarfile.open(first, "w") as archive:
+                self.add_tar_file(archive, "M003/video/front/happy/level_1/001.mp4", b"first")
+            with tarfile.open(second, "w") as archive:
+                self.add_tar_file(archive, "M003/video/front/happy/level_1/001.mp4", b"duplicate")
+                self.add_tar_file(archive, "M003/video/front/happy/level_1/002.mp4", b"second")
+
+            outputs = self.module.extract_mead_identity(
+                [first, second],
+                "M003",
+                root / "raw",
+                limit_videos=2,
+            )
+
+            self.assertEqual([path.stem for path in outputs], ["001", "002"])
+            self.assertEqual(outputs[0].read_bytes(), b"first")
+
     def test_extract_mead_identity_skips_existing_processed_pair(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -475,12 +511,26 @@ class PublicDatasetPrepareTest(unittest.TestCase):
             self.assertEqual(result.read_bytes(), source.read_bytes())
             self.assertFalse((target.parent / "video.tar.part").exists())
 
+    def test_local_archive_targets_are_unique_for_same_named_part_archives(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            first = root / "Part0" / "M026" / "video.tar"
+            second = root / "Part1" / "M026" / "video.tar"
+            targets = [
+                self.module.local_archive_target(root / "work", position, source)
+                for position, source in enumerate([first, second], start=1)
+            ]
+
+            self.assertEqual(len(set(targets)), 2)
+            self.assertEqual([path.name for path in targets], ["001_video.tar", "002_video.tar"])
+
     def test_resolve_mead_archives_checks_all_identities_and_reuses_base(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             archive = root / "M026" / "video.tar"
             archive.parent.mkdir()
-            archive.write_bytes(b"tar")
+            with tarfile.open(archive, "w") as handle:
+                self.add_tar_file(handle, "M026/video/front/happy/level_1/001.mp4")
             result = self.module.resolve_mead_archives(root, ["M026-1", "M026-2"])
             self.assertEqual(result, {"M026-1": [archive], "M026-2": [archive]})
 
@@ -496,6 +546,115 @@ class PublicDatasetPrepareTest(unittest.TestCase):
 
             result = self.module.find_video_archives(root, "M042")
             self.assertEqual(result, [actor / "video_2.tar"])
+
+    def test_find_video_archives_supports_nested_part_directories(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            actor = root / "Part1" / "W021"
+            actor.mkdir(parents=True)
+            with tarfile.open(actor / "video.tar", "w") as archive:
+                self.add_tar_file(archive, "W021/video/front/happy/level_1/001.mp4")
+
+            result = self.module.find_video_archives(root, "W021-1")
+            self.assertEqual(result, [actor / "video.tar"])
+
+    def test_find_video_archives_merges_multiple_actor_directories(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            first = root / "Part0" / "M026"
+            second = root / "Part1" / "M026"
+            first.mkdir(parents=True)
+            second.mkdir(parents=True)
+            with tarfile.open(first / "video_1.tar", "w") as archive:
+                self.add_tar_file(archive, "M026/video/front/happy/level_1/001.mp4")
+            with tarfile.open(second / "video_2.tar", "w") as archive:
+                self.add_tar_file(archive, "M026/video/front/sad/level_1/001.mp4")
+
+            result = self.module.find_video_archives(root, "M026-2")
+            self.assertEqual(result, [first / "video_1.tar", second / "video_2.tar"])
+
+    def test_find_video_archives_reports_existing_directory_contents(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            actor = root / "W021"
+            actor.mkdir()
+            (actor / "audio.tar").write_bytes(b"audio")
+            (actor / "README.txt").write_text("missing video", encoding="utf-8")
+
+            with self.assertRaises(FileNotFoundError) as raised:
+                self.module.find_video_archives(root, "W021-1")
+
+            message = str(raised.exception)
+            self.assertIn("W021", message)
+            self.assertIn("audio.tar", message)
+            self.assertIn("README.txt", message)
+            self.assertIn("video.tar", message)
+
+    def test_resolve_mead_archives_reports_all_missing_identities(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "M003").mkdir()
+            (root / "W021").mkdir()
+
+            with self.assertRaises(FileNotFoundError) as raised:
+                self.module.resolve_mead_archives(root, ["M003", "W021-1"])
+
+            message = str(raised.exception)
+            self.assertIn("M003", message)
+            self.assertIn("W021", message)
+            self.assertIn("一次性列出", message)
+            self.assertIn("find", message)
+
+    def test_resolve_mead_archives_scans_shared_root_once(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            for identity in ["M003", "W021"]:
+                actor = root / "Part0" / identity
+                actor.mkdir(parents=True)
+                with tarfile.open(actor / "video.tar", "w") as archive:
+                    self.add_tar_file(
+                        archive,
+                        f"{identity}/video/front/happy/level_1/001.mp4",
+                    )
+
+            original = self.module.build_actor_root_index
+            with mock.patch.object(
+                self.module,
+                "build_actor_root_index",
+                wraps=original,
+            ) as build_index:
+                result = self.module.resolve_mead_archives(root, ["M003", "W021-1"])
+
+            self.assertEqual(set(result), {"M003", "W021-1"})
+            build_index.assert_called_once_with(root, {"M003", "W021"})
+
+    def test_find_video_archives_rejects_corrupted_tar_with_clear_error(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            actor = root / "M003"
+            actor.mkdir()
+            (actor / "video.tar").write_bytes(b"not a tar")
+
+            with self.assertRaises(FileNotFoundError) as raised:
+                self.module.find_video_archives(root, "M003")
+
+            message = str(raised.exception)
+            self.assertIn("无法读取", message)
+            self.assertIn("video.tar", message)
+
+    def test_find_video_archives_rejects_corrupted_split_even_when_another_is_valid(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            actor = root / "M003"
+            actor.mkdir()
+            with tarfile.open(actor / "video_1.tar", "w") as archive:
+                self.add_tar_file(archive, "M003/video/front/happy/level_1/001.mp4")
+            (actor / "video_2.tar").write_bytes(b"not a tar")
+
+            with self.assertRaises(FileNotFoundError) as raised:
+                self.module.find_video_archives(root, "M003")
+
+            self.assertIn("video_2.tar", str(raised.exception))
 
     def test_cremad_manifest_maps_processed_mp4_to_official_flv(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

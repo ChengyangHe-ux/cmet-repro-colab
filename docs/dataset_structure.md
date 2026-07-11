@@ -5,13 +5,15 @@
 默认 Notebook 不把完整原始数据复制到用户 Drive：
 
 ```text
-MyDrive/MEAD/                         # 官方 Part0 公共文件夹快捷方式
+MyDrive/MEAD/                         # 官方 MEAD 快捷方式聚合根目录
+  M003/video.tar                     # 支持：顶层身份目录
+  Part1/W021/video_1.tar             # 支持：Part*/身份嵌套目录
 /content/cmet_public_data/MEAD/       # 当前 MEAD 身份临时 tar 与原片
 /content/cmet_public_data/CREMA-D/    # CREMA-D Git LFS 临时仓库
 MyDrive/C-MET-full/dataset/           # 最终处理数据与特征
 ```
 
-MEAD 先对官方 47 个身份做来源预检，再逐身份处理。每个完整身份应有 670 对 MP4/WAV：neutral 40 条，加 7 个非中性情绪 x 3 个 level x 30 条。身份完成状态记录在：
+MEAD 先一次扫描聚合根目录，对官方 47 个身份做来源预检，再逐身份处理。同一身份可以分散在多个 Part，同名 tar 复制到 Colab 时会自动编号避免覆盖。每个完整身份应有 670 对 MP4/WAV：neutral 40 条，加 7 个非中性情绪 x 3 个 level x 30 条。身份完成状态记录在：
 
 ```text
 MyDrive/C-MET-full/reports/mead_public_stream_state.json

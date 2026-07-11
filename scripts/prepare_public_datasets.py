@@ -2,7 +2,8 @@
 """从官方公开来源为 C-MET 流式准备 MEAD 与 CREMA-D。
 
 MEAD 不复制完整原始数据到用户 Drive。脚本读取用户添加到 Drive 的官方
-Part0 公共目录快捷方式，每次只从一个身份的 video.tar 或 video_*.tar 分卷中
+公共目录快捷方式，支持顶层身份目录和 Part*/身份聚合目录。每次只从一个身份的
+video.tar 或 video_*.tar 分卷中
 提取 C-MET 使用的 front/Common/Generic 视频，预处理成功后删除 Colab 临时文件。
 
 CREMA-D 使用官方 Git LFS 镜像，只下载 C-MET test.csv 实际引用的视频。
@@ -142,6 +143,8 @@ def select_mead_members(members: list[MeadMember], identity: str) -> list[MeadMe
         selected = [member for member in members if member.speaker == identity]
     elif not speakers or speakers == {base_identity}:
         selected = members
+    elif all(speaker.split("-", 1)[0] == base_identity for speaker in speakers):
+        selected = []
     else:
         raise RuntimeError(
             f"{identity} 的 video.tar 中没有对应身份；检测到：{', '.join(sorted(speakers))}"
@@ -350,6 +353,15 @@ def extract_mead_identity(
             selected_items.extend((archive_path, item) for item in selected)
 
     selected_items.sort(key=lambda pair: (pair[1].emotion, pair[1].level, int(pair[1].stem), pair[1].member_name))
+    unique_items = []
+    seen_outputs = set()
+    for archive_path, item in selected_items:
+        output_key = (item.emotion, item.level, item.stem)
+        if output_key in seen_outputs:
+            continue
+        seen_outputs.add(output_key)
+        unique_items.append((archive_path, item))
+    selected_items = unique_items
     if limit_videos is not None:
         selected_items = selected_items[:limit_videos]
     if not selected_items:
@@ -407,41 +419,206 @@ def archive_has_mead_media(archive_path: Path) -> bool:
     return False
 
 
-def find_video_archives(shared_root: Path, identity: str) -> list[Path]:
-    actor_root = shared_root / identity.split("-", 1)[0]
-    if not actor_root.is_dir():
-        raise FileNotFoundError(
-            f"MEAD 公共快捷方式中缺少身份目录：{actor_root}\n"
-            f"请把官方 Part0 文件夹添加为 Drive 快捷方式：{MEAD_PUBLIC_URL}"
-        )
-    direct = actor_root / "video.tar"
-    if direct.is_file():
-        return [direct]
-    matches = sorted(
-        path for path in actor_root.rglob("video*.tar")
-        if path.is_file() and path.name.startswith("video")
+def human_size(size: int) -> str:
+    value = float(size)
+    for unit in ["B", "KB", "MB", "GB", "TB"]:
+        if value < 1024 or unit == "TB":
+            return f"{value:.1f} {unit}"
+        value /= 1024
+    return f"{value:.1f} TB"
+
+
+def directory_sample(path: Path, limit: int = 12) -> str:
+    try:
+        entries = sorted(path.iterdir(), key=lambda item: (not item.is_dir(), item.name.lower()))
+    except OSError as exc:
+        return f"  - 无法读取目录：{exc}"
+    if not entries:
+        return "  - 目录为空"
+    lines = []
+    for entry in entries[:limit]:
+        try:
+            if entry.is_dir():
+                detail = "目录"
+            elif entry.is_file():
+                detail = f"文件，{human_size(entry.stat().st_size)}"
+            else:
+                detail = "其他"
+        except OSError:
+            detail = "无法读取属性"
+        lines.append(f"  - [{detail}] {entry.name}")
+    if len(entries) > limit:
+        lines.append(f"  - ... 其余 {len(entries) - limit} 项已省略")
+    return "\n".join(lines)
+
+
+def build_actor_root_index(
+    shared_root: Path,
+    base_identities: set[str],
+    max_depth: int = 3,
+) -> dict[str, list[Path]]:
+    wanted = {identity.upper() for identity in base_identities}
+    found = {identity: [] for identity in sorted(wanted)}
+    pending = [(shared_root, 0)]
+    visited = set()
+    while pending:
+        current, depth = pending.pop(0)
+        try:
+            key = str(current.resolve())
+        except OSError:
+            key = str(current.absolute())
+        if key in visited:
+            continue
+        visited.add(key)
+        current_name = current.name.upper()
+        if current_name in wanted:
+            found[current_name].append(current)
+            continue
+        if depth >= max_depth:
+            continue
+        try:
+            children = sorted(
+                (path for path in current.iterdir() if path.is_dir()),
+                key=lambda path: path.name.lower(),
+            )
+        except OSError:
+            continue
+        pending.extend((child, depth + 1) for child in children)
+    return found
+
+
+def find_actor_roots(shared_root: Path, identity: str, max_depth: int = 3) -> list[Path]:
+    base_identity = identity.split("-", 1)[0].upper()
+    return build_actor_root_index(shared_root, {base_identity}, max_depth)[base_identity]
+
+
+def video_archive_candidates(actor_roots: list[Path]) -> list[Path]:
+    matches = []
+    seen = set()
+    for actor_root in actor_roots:
+        try:
+            candidates = sorted(
+                path
+                for path in actor_root.rglob("*")
+                if path.is_file()
+                and path.suffix.lower() == ".tar"
+                and path.name.lower().startswith("video")
+            )
+        except OSError:
+            candidates = []
+        for path in candidates:
+            key = str(path)
+            if key not in seen:
+                seen.add(key)
+                matches.append(path)
+    return sorted(matches, key=lambda path: str(path).lower())
+
+
+def mead_source_diagnostics(shared_root: Path) -> str:
+    quoted = shlex.quote(str(shared_root))
+    return (
+        "Colab 诊断命令：\n"
+        f"find {quoted} -maxdepth 4 -type f -iname 'video*.tar' -print | sed -n '1,120p'\n"
+        f"find {quoted} -maxdepth 3 -type d -print | sed -n '1,160p'"
     )
+
+
+def local_archive_target(identity_work: Path, position: int, archive_path: Path) -> Path:
+    return identity_work / "archives" / f"{position:03d}_{archive_path.name}"
+
+
+def find_video_archives(
+    shared_root: Path,
+    identity: str,
+    actor_roots: list[Path] | None = None,
+) -> list[Path]:
+    base_identity = identity.split("-", 1)[0]
+    if actor_roots is None:
+        actor_roots = find_actor_roots(shared_root, identity)
+    if not actor_roots:
+        raise FileNotFoundError(
+            f"MEAD 公共根目录中缺少身份目录 {base_identity}：{shared_root}\n"
+            "已检查根目录与向下 3 层的 Part 聚合目录。\n"
+            f"根目录内容示例：\n{directory_sample(shared_root)}"
+        )
+    matches = video_archive_candidates(actor_roots)
     if not matches:
-        raise FileNotFoundError(f"{actor_root} 中没有找到 video.tar 或 video_*.tar")
-    media_archives = [path for path in matches if archive_has_mead_media(path)]
+        samples = "\n".join(
+            f"{actor_root}\n{directory_sample(actor_root)}"
+            for actor_root in actor_roots
+        )
+        raise FileNotFoundError(
+            f"已找到 {base_identity} 身份目录，但其中没有 video.tar 或 video_*.tar。\n"
+            f"目录内容示例：\n{samples}"
+        )
+    media_archives = []
+    unreadable = []
+    no_media = []
+    for path in matches:
+        try:
+            has_media = archive_has_mead_media(path)
+        except (OSError, tarfile.TarError) as exc:
+            unreadable.append(f"{path}：{exc}")
+            continue
+        if has_media:
+            media_archives.append(path)
+        else:
+            no_media.append(str(path))
+    if unreadable:
+        raise FileNotFoundError(
+            f"{base_identity} 存在无法读取的 video tar：\n  - "
+            + "\n  - ".join(unreadable[:10])
+        )
     if not media_archives:
-        sample = ", ".join(path.name for path in matches[:10])
-        raise FileNotFoundError(f"{actor_root} 中找到 tar 但没有 front 官方视频，示例：{sample}")
+        details = []
+        if no_media:
+            details.append("可读取但没有 front 官方视频的 tar：\n  - " + "\n  - ".join(no_media[:10]))
+        raise FileNotFoundError(
+            f"{base_identity} 的候选 video tar 全部不可用。\n" + "\n".join(details)
+        )
     return media_archives
 
 
 def resolve_mead_archives(shared_root: Path, identities: list[str]) -> dict[str, list[Path]]:
     archives = {}
     archives_by_base = {}
+    errors = {}
+    base_identities = {identity.split("-", 1)[0] for identity in identities}
+    actor_root_index = build_actor_root_index(shared_root, base_identities)
     for identity in identities:
         base_identity = identity.split("-", 1)[0]
         if base_identity not in archives_by_base:
-            identity_archives = find_video_archives(shared_root, identity)
-            for archive in identity_archives:
-                if archive.stat().st_size <= 0:
-                    raise RuntimeError(f"MEAD video tar 为空：{archive}")
-            archives_by_base[base_identity] = identity_archives
-        archives[identity] = archives_by_base[base_identity]
+            try:
+                identity_archives = find_video_archives(
+                    shared_root,
+                    identity,
+                    actor_roots=actor_root_index[base_identity.upper()],
+                )
+                for archive in identity_archives:
+                    if archive.stat().st_size <= 0:
+                        raise RuntimeError(f"MEAD video tar 为空：{archive}")
+            except (FileNotFoundError, OSError, RuntimeError) as exc:
+                errors[base_identity] = str(exc)
+                archives_by_base[base_identity] = None
+            else:
+                archives_by_base[base_identity] = identity_archives
+        identity_archives = archives_by_base[base_identity]
+        if identity_archives is not None:
+            archives[identity] = identity_archives
+    if errors:
+        details = "\n\n".join(
+            f"[{base_identity}]\n{message}"
+            for base_identity, message in errors.items()
+        )
+        raise FileNotFoundError(
+            f"MEAD 来源预检未通过，以下 {len(errors)} 个基础身份的问题已一次性列出：\n\n"
+            f"{details}\n\n"
+            "这通常表示当前只添加了部分 MEAD Part，或某些身份目录中只有音频/标注。\n"
+            "请把所有可访问的 MEAD Part 快捷方式放到同一个 MyDrive/MEAD 根目录下，"
+            "保留 Part 子目录即可，不需要复制大型 tar。\n\n"
+            f"{mead_source_diagnostics(shared_root)}\n\n"
+            "数据补齐前不要运行第二阶段完整预处理。"
+        )
     total_size = sum(path.stat().st_size for paths in archives_by_base.values() for path in paths)
     total_archives = sum(len(paths) for paths in archives_by_base.values())
     print(
@@ -503,8 +680,8 @@ def prepare_mead(args: argparse.Namespace) -> None:
     report_root = args.report_root.resolve()
     if not shared_root.is_dir():
         raise FileNotFoundError(
-            f"没有找到 MEAD 官方公共目录快捷方式：{shared_root}\n"
-            f"请打开 {MEAD_PUBLIC_URL}，选择“整理 -> 添加快捷方式”，放到该路径。"
+            f"没有找到 MEAD 官方数据聚合目录：{shared_root}\n"
+            f"请打开 {MEAD_PUBLIC_URL}，将可访问的视频 Part 快捷方式放到该根目录。"
         )
     identities = read_identities(cmet_root)
     all_identities = list(identities)
@@ -568,8 +745,11 @@ def prepare_mead(args: argparse.Namespace) -> None:
         succeeded = False
         try:
             local_archives = [
-                stage_archive(archive_path, identity_work / archive_path.name)
-                for archive_path in archive_paths
+                stage_archive(
+                    archive_path,
+                    local_archive_target(identity_work, position, archive_path),
+                )
+                for position, archive_path in enumerate(archive_paths, start=1)
             ]
             extracted = extract_mead_identity(
                 local_archives,
@@ -832,7 +1012,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="从公开来源流式准备 C-MET 数据")
     subparsers = parser.add_subparsers(dest="dataset", required=True)
 
-    mead = subparsers.add_parser("mead", help="从用户 Drive 中的官方 MEAD 快捷方式逐身份处理")
+    mead = subparsers.add_parser("mead", help="从用户 Drive 中的官方 MEAD 聚合目录逐身份处理")
     mead.add_argument("--shared-root", required=True, type=Path)
     mead.add_argument("--cmet-root", required=True, type=Path)
     mead.add_argument("--out-root", required=True, type=Path)
@@ -861,4 +1041,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except (FileNotFoundError, OSError, RuntimeError, ValueError, tarfile.TarError) as exc:
+        print(f"\n错误：{exc}", file=sys.stderr)
+        raise SystemExit(1) from None

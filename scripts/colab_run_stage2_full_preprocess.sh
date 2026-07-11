@@ -26,6 +26,12 @@ if [[ ! -d "/content/drive/MyDrive" ]]; then
   exit 1
 fi
 
+if [[ ! -d "${REPRO_ROOT}/.git" ]]; then
+  echo "没有找到复现仓库：${REPRO_ROOT}"
+  echo "请先运行第一阶段，或克隆：git clone https://github.com/ChengyangHe-ux/cmet-repro-colab.git ${REPRO_ROOT}"
+  exit 1
+fi
+
 cd "${REPRO_ROOT}"
 git pull --ff-only
 
@@ -36,7 +42,8 @@ git -C "${CMET_ROOT}" fetch origin "${CMET_COMMIT}"
 git -C "${CMET_ROOT}" switch --detach "${CMET_COMMIT}"
 
 if [[ ! -d "${MEAD_SHARED_ROOT}" ]]; then
-  echo "没有找到 MEAD 官方快捷方式：${MEAD_SHARED_ROOT}"
+  echo "没有找到 MEAD 官方数据聚合目录：${MEAD_SHARED_ROOT}"
+  echo "请把所有可访问的官方视频 Part 快捷方式聚合到该目录，然后先重跑第一阶段。"
   exit 1
 fi
 

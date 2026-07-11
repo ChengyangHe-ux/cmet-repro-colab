@@ -102,19 +102,21 @@ pandas==2.2.2
 处理顺序：
 
 1. 打开 `https://drive.google.com/drive/folders/1GwXP-KpWOxOenOxITTsURJZQ_1pkd4-j`。
-2. 对顶层 `MEAD` 文件夹执行“整理 -> 添加快捷方式”，不要逐个身份添加。
-3. 把快捷方式放到 MyDrive 根目录；若名称或位置不同，只修改 Notebook 的 `MEAD_SHARED_ROOT`。
+2. 将你有权访问的 MEAD 视频 Part 或身份目录执行“整理 -> 添加快捷方式”。
+3. 在 MyDrive 中建立 `MEAD` 聚合目录。可以是 `MEAD/W021/video.tar`，也可以是 `MEAD/Part1/W021/video_1.tar`；若位置不同，只修改 Notebook 的 `MEAD_SHARED_ROOT`。
 4. 重新挂载 Drive，运行 `RUN_MEAD_SOURCE_CHECK=True`。
 
 不要使用匿名 `gdown` 批量下载。大文件可能触发 Google `Too many users have viewed or downloaded this file recently`，而且完整复制原始 tar 会远超当前 Drive 空间。
 
 ### MEAD 来源预检缺少某个身份
 
-来源预检会检查 C-MET 官方 47 个身份。特殊身份 `M026-2`、`M032-2`、`M042-1`、`W021-1` 会映射到公共盘中的基础身份目录。若仍报缺失，通常说明添加的是某个子目录而不是顶层 Part0 文件夹。
+来源预检会检查 C-MET 官方 47 个身份。特殊身份 `M026-2`、`M032-2`、`M042-1`、`W021-1` 会映射到公共盘中的基础身份目录。脚本会扫描根目录和向下 3 层的 Part 目录，并一次列出所有缺失身份。
+
+如果显示“已找到 `W021` 身份目录，但其中没有 `video.tar` 或 `video_*.tar`”，说明当前快捷方式里只有音频、标注或不完整 Part。请补充包含 `W021` 视频 tar 的官方 Part，并放到同一 `MyDrive/MEAD` 聚合目录下。数据补齐前不要运行 Stage 2，重跑脚本不会修复缺失的源数据。
 
 ### MEAD tar 复制中断
 
-- 只停止单元格、运行时仍存在：再次运行同一开关，会从 `/content/cmet_public_data/.../video.tar.part` 继续。
+- 只停止单元格、运行时仍存在：再次运行同一开关，会从 `/content/cmet_public_data/MEAD/身份/archives/001_video.tar.part` 这类编号临时文件继续。
 - 运行时被彻底删除：当前身份的本地 `.part` 会消失，需要重新复制该身份约 19GB；已经写入 Drive 并标记完成的其他身份不会重做。
 - 报本地盘不足：至少需要“tar 剩余大小 + 8GB”可用空间。重启运行时清理 `/content`，不要删除 Drive 中的处理结果和状态报告。
 
