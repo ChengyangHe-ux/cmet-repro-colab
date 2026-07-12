@@ -58,29 +58,13 @@ GPU 与真实 Drive 门禁
 
 主实验和两组消融仍每 1000 step 保存一次用于断线恢复，但会自动只保留最近 3 份、每 5 万 step 里程碑和最终 checkpoint，避免三组 20 万步训练写满 Drive。
 
-## Colab 终端推荐跑法
+## Colab 一键数据预处理
 
-如果 Notebook 页面里临时单元格被改乱，优先用 Colab 终端跑脚本。先确认已经挂载 Google Drive，然后使用续跑控制器：
+完整 Notebook 顶部提供“**▶ 一键完成公开数据预处理**”代码单元。直接点击该单元左侧运行按钮即可，不需要打开 Colab 终端，也不需要手工执行 Git 或 Bash 命令。
 
-```bash
-cd /content/cmet-repro-colab
-git pull --ff-only
-bash scripts/colab_resume_data_pipeline.sh
-```
+该单元会自动挂载 Drive、克隆或更新仓库、固定并修补官方 C-MET、安装数据预处理依赖，然后执行 MEAD 来源预检、MEAD/CREMA-D smoke 和完整预处理。状态写入 `MyDrive/C-MET-full`；Colab 断线后重新运行同一单元即可断点续跑。
 
-该命令会读取 `MyDrive/C-MET-full` 的状态文件：首次运行执行来源预检和小样本 smoke；smoke 通过后，再运行同一条命令会自动进入完整预处理；完整数据已完成时会提示进入特征抽取阶段。查看状态可执行：
-
-```bash
-bash scripts/colab_resume_data_pipeline.sh status
-```
-
-若希望 smoke 成功后不中断、直接继续完整预处理：
-
-```bash
-CMET_CONTINUE_FULL=1 bash scripts/colab_resume_data_pipeline.sh
-```
-
-底层仍可分别调用 `colab_run_stage1_data_smoke.sh` 和 `colab_run_stage2_full_preprocess.sh`。这些脚本会自动固定官方 C-MET commit、检查 `MyDrive/MEAD` 聚合目录、支持顶层身份与 `Part*/身份`、支持 `video.tar` 和 `video_*.tar` 分卷，并把状态报告写到 `MyDrive/C-MET-full/reports`。
+唯一需要人工完成的是 Google Drive 授权，以及把有权限访问的 MEAD 视频 Part 快捷方式放到 `MyDrive/MEAD`。底层终端脚本仍保留用于排错，但不再是正常使用流程的必要步骤。
 
 ## 已实现的主方法链路
 

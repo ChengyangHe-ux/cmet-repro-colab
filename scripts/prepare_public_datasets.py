@@ -556,6 +556,11 @@ def find_video_archives(
     no_media = []
     for path in matches:
         try:
+            archive_size = human_size(path.stat().st_size)
+        except OSError:
+            archive_size = "大小未知"
+        print(f"  正在检查 tar：{path}（{archive_size}）", flush=True)
+        try:
             has_media = archive_has_mead_media(path)
         except (OSError, tarfile.TarError) as exc:
             unreadable.append(f"{path}：{exc}")
@@ -585,9 +590,16 @@ def resolve_mead_archives(shared_root: Path, identities: list[str]) -> dict[str,
     errors = {}
     base_identities = {identity.split("-", 1)[0] for identity in identities}
     actor_root_index = build_actor_root_index(shared_root, base_identities)
+    checked_bases = set()
+    unique_base_count = len(base_identities)
     for identity in identities:
         base_identity = identity.split("-", 1)[0]
         if base_identity not in archives_by_base:
+            checked_bases.add(base_identity)
+            print(
+                f"[MEAD 来源预检 {len(checked_bases)}/{unique_base_count}] 检查身份 {base_identity}",
+                flush=True,
+            )
             try:
                 identity_archives = find_video_archives(
                     shared_root,
@@ -602,6 +614,10 @@ def resolve_mead_archives(shared_root: Path, identities: list[str]) -> dict[str,
                 archives_by_base[base_identity] = None
             else:
                 archives_by_base[base_identity] = identity_archives
+                print(
+                    f"  {base_identity}：发现 {len(identity_archives)} 个可用 video tar",
+                    flush=True,
+                )
         identity_archives = archives_by_base[base_identity]
         if identity_archives is not None:
             archives[identity] = identity_archives

@@ -84,5 +84,20 @@ class DataPipelineStatusTest(unittest.TestCase):
             self.assertEqual(status["next_stage"], "smoke")
 
 
+class NotebookOneClickTest(unittest.TestCase):
+    def test_full_notebook_contains_self_contained_data_cell(self) -> None:
+        path = ROOT / "notebooks" / "C-MET_Full_Reproduction_Colab.ipynb"
+        notebook = json.loads(path.read_text(encoding="utf-8"))
+        cells = {cell.get("id"): cell for cell in notebook["cells"]}
+        self.assertIn("one-click-data-pipeline", cells)
+        source = "".join(cells["one-click-data-pipeline"]["source"])
+        self.assertIn("drive.mount", source)
+        self.assertIn("git\", \"clone", source)
+        self.assertIn("install_colab_dependencies.py", source)
+        self.assertIn("patch_cmet_colab_full.py", source)
+        self.assertIn("colab_resume_data_pipeline.sh", source)
+        self.assertIn('"CMET_CONTINUE_FULL": "1"', source)
+
+
 if __name__ == "__main__":
     unittest.main()
