@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.DS_Store
+outputs/
+models/
+reports/
+.ipynb_checkpoints/
