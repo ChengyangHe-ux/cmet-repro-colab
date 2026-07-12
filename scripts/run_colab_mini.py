@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""准备官方 C-MET、缓存权重并运行小规模推理复现。"""
+"""准备官方 C-MET、缓存权重并运行科学小规模复现。"""
 
 from __future__ import annotations
 
@@ -55,7 +55,9 @@ def main() -> None:
     parser.add_argument("--emotions", default="happy,sad,angry")
     parser.add_argument("--num-samples", type=int, default=3)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--run-name", default="official_demo")
+    parser.add_argument("--sensitivity-seed", type=int, default=123)
+    parser.add_argument("--profile", choices=["demo", "scientific"], default="scientific")
+    parser.add_argument("--run-name", default="scientific_mini")
     args = parser.parse_args()
 
     project_root = args.project_root.resolve()
@@ -107,11 +109,13 @@ def main() -> None:
         ]
     )
 
-    print("== 5/5 生成小规模情绪编辑结果 ==", flush=True)
+    print("== 5/5 运行小规模对照、消融与敏感性实验 ==", flush=True)
     run(
         [
             sys.executable,
-            project_root / "scripts" / "run_mini_inference.py",
+            project_root / "scripts" / "run_scientific_mini.py",
+            "--project-root",
+            project_root,
             "--cmet-root",
             cmet_root,
             "--checkpoint",
@@ -124,6 +128,10 @@ def main() -> None:
             args.num_samples,
             "--seed",
             args.seed,
+            "--sensitivity-seed",
+            args.sensitivity_seed,
+            "--profile",
+            args.profile,
         ]
     )
     print("结果目录：", output_root, flush=True)

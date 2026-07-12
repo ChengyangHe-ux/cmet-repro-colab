@@ -75,6 +75,25 @@ def load_feature_pool(
     return np.stack(arrays).mean(axis=0)
 
 
+def compute_expression_direction(
+    neutral: np.ndarray,
+    emotional: np.ndarray,
+    scale: float = 1.0,
+) -> np.ndarray:
+    """计算可控的跨模态情绪方向，便于做零方向消融和强度分析。"""
+    neutral = np.asarray(neutral, dtype=np.float32).squeeze()
+    emotional = np.asarray(emotional, dtype=np.float32).squeeze()
+    if neutral.shape != (1024,) or emotional.shape != (1024,):
+        raise ValueError(
+            f"neutral/emotional 必须都是 (1024,)，实际为 {neutral.shape}/{emotional.shape}"
+        )
+    if not np.isfinite(neutral).all() or not np.isfinite(emotional).all():
+        raise ValueError("情绪特征包含 NaN 或 Inf")
+    if not np.isfinite(scale):
+        raise ValueError("scale 必须是有限数值")
+    return (emotional - neutral) * np.float32(scale)
+
+
 class CMetInferenceRuntime:
     """加载一次官方模型，并为多条样本复用同一组权重。"""
 
@@ -166,11 +185,12 @@ class CMetInferenceRuntime:
         emotion_pool: Path | Iterable[Path],
         num_samples: int,
         seed: int,
+        direction_scale: float,
     ):
         rng = random.Random(seed)
         neutral = load_feature_pool(neutral_pool, num_samples, rng=rng)
         emotional = load_feature_pool(emotion_pool, num_samples, rng=rng)
-        direction = emotional - neutral
+        direction = compute_expression_direction(neutral, emotional, direction_scale)
         return self.torch.from_numpy(direction).float().unsqueeze(0).unsqueeze(0).to(self.device)
 
     def _extract_neutral_expression(self, video):
@@ -193,6 +213,7 @@ class CMetInferenceRuntime:
         emotion_pool: Path | Iterable[Path],
         num_samples: int,
         seed: int,
+        direction_scale: float = 1.0,
     ) -> GenerationTiming:
         for required in [source_image, source_audio, pose_video]:
             if not required.is_file():
@@ -207,7 +228,13 @@ class CMetInferenceRuntime:
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
 
-        direction = self._expression_direction(neutral_pool, emotion_pool, num_samples, seed)
+        direction = self._expression_direction(
+            neutral_pool,
+            emotion_pool,
+            num_samples,
+            seed,
+            direction_scale,
+        )
         identity = self.img_preprocessing(str(source_image), 256).to(self.device)
         audio, audio_batch, audio_length = self.audio_preprocessing(str(source_audio), device=str(self.device))
         with torch.inference_mode():
