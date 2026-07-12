@@ -60,22 +60,27 @@ GPU 与真实 Drive 门禁
 
 ## Colab 终端推荐跑法
 
-如果 Notebook 页面里临时单元格被改乱，优先用 Colab 终端跑脚本。先确认已经挂载 Google Drive，然后执行：
+如果 Notebook 页面里临时单元格被改乱，优先用 Colab 终端跑脚本。先确认已经挂载 Google Drive，然后使用续跑控制器：
 
 ```bash
 cd /content/cmet-repro-colab
 git pull --ff-only
-bash scripts/colab_run_stage1_data_smoke.sh
+bash scripts/colab_resume_data_pipeline.sh
 ```
 
-第一阶段无报错后，再执行完整数据预处理：
+该命令会读取 `MyDrive/C-MET-full` 的状态文件：首次运行执行来源预检和小样本 smoke；smoke 通过后，再运行同一条命令会自动进入完整预处理；完整数据已完成时会提示进入特征抽取阶段。查看状态可执行：
 
 ```bash
-cd /content/cmet-repro-colab
-bash scripts/colab_run_stage2_full_preprocess.sh
+bash scripts/colab_resume_data_pipeline.sh status
 ```
 
-这两个脚本会自动固定官方 C-MET commit、检查 `MyDrive/MEAD` 聚合目录、支持顶层身份与 `Part*/身份`、支持 `video.tar` 和 `video_*.tar` 分卷，并把状态报告写到 `MyDrive/C-MET-full/reports`。
+若希望 smoke 成功后不中断、直接继续完整预处理：
+
+```bash
+CMET_CONTINUE_FULL=1 bash scripts/colab_resume_data_pipeline.sh
+```
+
+底层仍可分别调用 `colab_run_stage1_data_smoke.sh` 和 `colab_run_stage2_full_preprocess.sh`。这些脚本会自动固定官方 C-MET commit、检查 `MyDrive/MEAD` 聚合目录、支持顶层身份与 `Part*/身份`、支持 `video.tar` 和 `video_*.tar` 分卷，并把状态报告写到 `MyDrive/C-MET-full/reports`。
 
 ## 已实现的主方法链路
 
@@ -157,6 +162,8 @@ configs/
   experiments.json
   paper_targets.json
 scripts/
+  colab_resume_data_pipeline.sh
+  data_pipeline_status.py
   install_colab_dependencies.py
   download_pretrained_weights.py
   verify_colab_environment.py
