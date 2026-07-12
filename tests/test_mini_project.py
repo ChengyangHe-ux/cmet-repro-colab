@@ -46,6 +46,7 @@ class NotebookTest(unittest.TestCase):
         self.assertIn("drive.mount", source)
         self.assertIn("run_colab_mini.py", source)
         self.assertIn("cmet-mini-repro-colab", source)
+        self.assertIn("mini-repro", source)
         for cell in notebook["cells"]:
             if cell.get("cell_type") == "code":
                 ast.parse("".join(cell.get("source", [])))

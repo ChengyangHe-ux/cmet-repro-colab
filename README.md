@@ -42,3 +42,7 @@ MyDrive/C-MET-mini/results/<run-name>/
 ```
 
 断线后重新运行同一个单元即可；已经生成且通过检查的视频会自动跳过。
+
+## 当前托管方式
+
+独立项目暂时发布在 `ChengyangHe-ux/cmet-repro-colab` 的 `mini-repro` 隔离分支。该分支是独立根提交，与完整复现 `main` 不共享项目文件。
