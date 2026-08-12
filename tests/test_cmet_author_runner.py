@@ -83,6 +83,20 @@ class CmetAuthorRunnerTest(unittest.TestCase):
                 [("fvd", ["/opt/fvd/bin/python", "fvd.py", "runs/mead_ours"])],
             )
 
+    def test_fvd_python_path_keeps_virtualenv_symlink(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            base_python = root / "base-python"
+            base_python.write_bytes(b"")
+            venv_python = root / "venv" / "bin" / "python"
+            venv_python.parent.mkdir(parents=True)
+            venv_python.symlink_to(base_python)
+
+            normalized = self.module.absolute_without_resolving(venv_python)
+
+            self.assertEqual(normalized, venv_python.absolute())
+            self.assertTrue(normalized.is_symlink())
+
     def test_completed_row_is_atomic_and_hydrates_resume(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

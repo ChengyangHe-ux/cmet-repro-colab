@@ -492,6 +492,10 @@ def ensure_isolated_run_dir(layout: AuthorRunLayout) -> None:
         raise RuntimeError(f"Dedicated author run directory contains other CSV files: {names}")
 
 
+def absolute_without_resolving(path: Path) -> Path:
+    return path.expanduser().absolute()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--author-root", required=True, type=Path)
@@ -561,7 +565,7 @@ def main() -> None:
         args.worker_count,
         args.fid_batch_size,
         args.fid_video_batch_size,
-        args.fvd_python.expanduser().resolve() if args.fvd_python else None,
+        absolute_without_resolving(args.fvd_python) if args.fvd_python else None,
     )
     run_record = {
         "status": "planned" if not args.execute else "running",
