@@ -78,7 +78,14 @@ METRICS = ["fid"]  # add "fvd", "accemo", "syncconf" after each dependency gate 
 DEVICE = "cuda:0"
 SMOKE_ROWS = 1
 
-drive.mount("/content/drive", force_remount=False)
+DRIVE_MOUNT = Path("/content/drive")
+if not (DRIVE_MOUNT / "MyDrive").is_dir():
+    try:
+        drive.mount(str(DRIVE_MOUNT), force_remount=False, timeout_ms=300000)
+    except ValueError as exc:
+        raise RuntimeError(
+            "DriveFS timed out. Use Colab Files > Mount Drive, then rerun this cell."
+        ) from exc
 MY_DRIVE = Path("/content/drive/MyDrive")
 DRIVE_ROOT = MY_DRIVE / "C-MET-full"
 REPORT_ROOT = DRIVE_ROOT / "reports" / "cmet_author_eval_20260813"
@@ -155,6 +162,17 @@ audit = json.loads(AUDIT_PATH.read_text(encoding="utf-8"))
 assert audit["status"] == "pass", audit
 assert not audit["aitv_author_exact_available"], audit
 print(json.dumps(audit, indent=2))
+
+if "accemo" in METRICS and not EMOTION_CHECKPOINT.is_file():
+    run([sys.executable, "-m", "pip", "install", "-q", "gdown"])
+    run([
+        sys.executable,
+        "-m",
+        "gdown",
+        "1H0tqOEe5-EqlmomB_FujgbrG8C7dadf1",
+        "-O",
+        str(EMOTION_CHECKPOINT),
+    ])
 """),
     markdown("""## Manifest and media gate
 
