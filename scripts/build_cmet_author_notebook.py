@@ -56,6 +56,7 @@ from google.colab import drive
 AUTHOR_COMMIT = "aa8441f73b71fe8d30c58c77862acf0133ec1c9c"
 USER_REPO_URL = "https://github.com/ChengyangHe-ux/cmet-repro-colab.git"
 AUTHOR_REPO_URL = "https://github.com/ChanHyeok-Choi/C-MET.git"
+FVD_PYTHON = Path("/content/cmet-author-fvd-py311/bin/python")
 
 
 def run(args: list[str], cwd: Path | None = None) -> str:
@@ -173,6 +174,23 @@ assert audit["status"] == "pass", audit
 assert not audit["aitv_author_exact_available"], audit
 print(json.dumps(audit, indent=2))
 
+if "fvd" in METRICS:
+    fvd_requirements = USER_ROOT / "configs" / "cmet_author_fvd_requirements.txt"
+    run(["uv", "python", "install", "3.11"])
+    if not FVD_PYTHON.is_file():
+        run(["uv", "venv", "--python", "3.11", str(FVD_PYTHON.parents[1])])
+    run([
+        "uv", "pip", "install", "--python", str(FVD_PYTHON),
+        "-r", str(fvd_requirements),
+    ])
+    fvd_probe = subprocess.run([
+        str(FVD_PYTHON), "-c",
+        "import tensorflow as tf, tensorflow_gan as tfgan, tensorflow_hub as hub; "
+        "assert hasattr(hub, 'Module'); "
+        "print(tf.__version__, tfgan.__version__, hub.__version__, tf.config.list_physical_devices('GPU'))",
+    ], text=True, capture_output=True, check=True)
+    print(fvd_probe.stdout)
+
 if "accemo" in METRICS and not EMOTION_CHECKPOINT.is_file():
     run([sys.executable, "-m", "pip", "install", "-q", "gdown"])
     run([
@@ -211,6 +229,8 @@ if MODE == "smoke":
     runner_args.extend(["--limit", str(SMOKE_ROWS)])
 if "accemo" in METRICS:
     runner_args.extend(["--emotion-checkpoint", str(EMOTION_CHECKPOINT)])
+if "fvd" in METRICS:
+    runner_args.extend(["--fvd-python", str(FVD_PYTHON)])
 
 run(runner_args)
 plan = json.loads((RESULT_ROOT / "run.json").read_text(encoding="utf-8"))

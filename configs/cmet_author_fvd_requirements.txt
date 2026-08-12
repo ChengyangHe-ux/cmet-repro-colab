@@ -1,0 +1,9 @@
+tensorflow==2.12.1
+tensorflow-gan==2.1.0
+tensorflow-probability==0.20.1
+tensorflow-hub==0.12.0
+protobuf==3.20.3
+setuptools==80.10.2
+opencv-python-headless==4.11.0.86
+pandas==2.3.3
+tqdm==4.70.0
