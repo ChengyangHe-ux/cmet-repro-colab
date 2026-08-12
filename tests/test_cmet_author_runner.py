@@ -53,6 +53,7 @@ class CmetAuthorRunnerTest(unittest.TestCase):
                 3,
                 256,
                 32,
+                None,
             )
             stages = [stage for stage, _ in plan]
             self.assertEqual(stages, ["preprocess_frames", "fid", "fvd", "syncconf_pipeline", "syncconf"])
@@ -62,6 +63,25 @@ class CmetAuthorRunnerTest(unittest.TestCase):
             self.assertIn("cuda:0", fid)
             sync = dict(plan)["syncconf_pipeline"]
             self.assertIn("syncnet_python/all_pipeline.py", sync)
+
+    def test_command_plan_can_isolate_fvd_python(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            layout = self.make_layout(Path(temp))
+            plan = self.module.command_plan(
+                layout,
+                ["fvd"],
+                None,
+                None,
+                2,
+                128,
+                16,
+                Path("/opt/fvd/bin/python"),
+            )
+
+            self.assertEqual(
+                plan,
+                [("fvd", ["/opt/fvd/bin/python", "fvd.py", "runs/mead_ours"])],
+            )
 
     def test_completed_row_is_atomic_and_hydrates_resume(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

@@ -336,6 +336,7 @@ def command_plan(
     worker_count: int,
     fid_batch_size: int,
     fid_video_batch_size: int,
+    fvd_python: Path | None,
 ) -> list[tuple[str, list[str]]]:
     python = sys.executable
     requested = list(dict.fromkeys(metrics))
@@ -358,7 +359,7 @@ def command_plan(
             fid_command.extend(["--device", device])
         plan.append(("fid", fid_command))
     if "fvd" in requested:
-        plan.append(("fvd", [python, "fvd.py", "runs/mead_ours"]))
+        plan.append(("fvd", [str(fvd_python) if fvd_python else python, "fvd.py", "runs/mead_ours"]))
     if "accemo" in requested:
         if checkpoint is None:
             raise ValueError("--emotion-checkpoint is required for accemo")
@@ -510,6 +511,7 @@ def main() -> None:
     parser.add_argument("--worker-count", type=int, default=2)
     parser.add_argument("--fid-batch-size", type=int, default=128)
     parser.add_argument("--fid-video-batch-size", type=int, default=16)
+    parser.add_argument("--fvd-python", type=Path)
     parser.add_argument("--poll-seconds", type=float, default=2.0)
     parser.add_argument("--execute", action="store_true")
     args = parser.parse_args()
@@ -559,6 +561,7 @@ def main() -> None:
         args.worker_count,
         args.fid_batch_size,
         args.fid_video_batch_size,
+        args.fvd_python.expanduser().resolve() if args.fvd_python else None,
     )
     run_record = {
         "status": "planned" if not args.execute else "running",
