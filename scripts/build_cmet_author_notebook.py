@@ -147,7 +147,17 @@ run(["git", "checkout", "--detach", AUTHOR_COMMIT], cwd=AUTHOR_ROOT)
 head = git_output(["rev-parse", "HEAD"], AUTHOR_ROOT)
 assert head == AUTHOR_COMMIT, head
 
-run([sys.executable, "-m", "unittest", "tests.test_cmet_author_protocol", "tests.test_cmet_author_runner", "-v"], cwd=USER_ROOT)
+run([
+    sys.executable,
+    "-m",
+    "unittest",
+    "discover",
+    "-s",
+    "tests",
+    "-p",
+    "test_cmet_author*.py",
+    "-v",
+], cwd=USER_ROOT)
 AUDIT_PATH = REPORT_ROOT / "author_source_audit.json"
 run([
     sys.executable,
