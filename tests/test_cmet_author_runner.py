@@ -128,6 +128,31 @@ class CmetAuthorRunnerTest(unittest.TestCase):
             self.assertFalse(report["author_1143_semantic_alignment_exact"])
             self.assertEqual(report["alignment_label"], "raw-part0-filename-present-subset")
 
+    def test_summary_is_failed_when_any_metric_row_failed(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            layout = self.make_layout(root)
+            rows = [{
+                "source_video_path": "/source.mp4",
+                "gt_video_path": "/gt.mp4",
+                "gt_emotion": "happy",
+                "intensity": "level_3",
+                "generated_path": "/generated.mp4",
+                "source_audio_path": "/source.wav",
+                "sample_id": "sample-1",
+            }]
+            destination = self.module.metric_result_path(layout, "sample-1", "fvd")
+            destination.parent.mkdir(parents=True)
+            destination.write_text(json.dumps({
+                "status": "failed",
+                "error": "author command failed",
+            }), encoding="utf-8")
+
+            report = self.module.summarize(layout, rows, ["fvd"])
+
+            self.assertEqual(report["status"], "failed")
+            self.assertEqual(report["metrics"]["fvd"]["failed_rows"], 1)
+
     def test_polling_partial_csv_is_tolerated(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

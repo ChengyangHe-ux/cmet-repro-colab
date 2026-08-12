@@ -435,7 +435,7 @@ def run_and_monitor(
 
 def summarize(layout: AuthorRunLayout, rows: list[dict[str, str]], metrics: Iterable[str]) -> dict[str, Any]:
     report: dict[str, Any] = {
-        "status": "complete",
+        "status": "pending",
         "updated_at": utc_now(),
         "author_commit": AUTHOR_COMMIT,
         "manifest_rows": len(rows),
@@ -472,6 +472,13 @@ def summarize(layout: AuthorRunLayout, rows: list[dict[str, str]], metrics: Iter
             else:
                 metric_report["value"] = finite_mean(item["value"] for item in complete)
         report["metrics"][metric] = metric_report
+    metric_reports = list(report["metrics"].values())
+    if any(item["failed_rows"] for item in metric_reports):
+        report["status"] = "failed"
+    elif any(item["pending_rows"] for item in metric_reports):
+        report["status"] = "pending"
+    else:
+        report["status"] = "complete"
     write_json_atomic(layout.result_root / "summary.json", report)
     return report
 
