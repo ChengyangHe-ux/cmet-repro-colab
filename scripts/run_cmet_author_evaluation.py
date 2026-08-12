@@ -149,9 +149,16 @@ def remap_manifest_paths(
     return remapped
 
 
-def require_media_rows(rows: Iterable[dict[str, str]]) -> None:
+def require_media_rows(rows: Iterable[dict[str, str]], metrics: Iterable[str]) -> None:
+    required_fields = tuple(
+        dict.fromkeys(
+            field
+            for metric in metrics
+            for field in MEDIA_FIELDS[metric]
+        )
+    )
     for row in rows:
-        for field in PATH_FIELDS:
+        for field in required_fields:
             path = Path(row[field]).expanduser()
             if not path.is_file() or path.stat().st_size <= 0:
                 raise FileNotFoundError(f"{row['sample_id']} {field}: {path}")
@@ -512,7 +519,7 @@ def main() -> None:
             raise ValueError("--limit must be positive")
         rows = rows[: args.limit]
     if args.execute:
-        require_media_rows(rows)
+        require_media_rows(rows, args.metrics)
 
     audit = audit_author_tree(author_root)
     if audit["status"] != "pass":

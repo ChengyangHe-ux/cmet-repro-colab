@@ -165,6 +165,27 @@ class CmetAuthorRunnerTest(unittest.TestCase):
         self.assertEqual(remapped[0]["source_video_path"], "/drive/dataset/source.mp4")
         self.assertEqual(remapped[0]["generated_path"], "/drive/root/runs/generated.mp4")
 
+    def test_media_gate_only_requires_inputs_for_selected_metrics(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            generated = root / "generated.mp4"
+            gt = root / "gt.mp4"
+            generated.write_bytes(b"generated")
+            gt.write_bytes(b"ground-truth")
+            rows = [{
+                "source_video_path": str(root / "missing-source.mp4"),
+                "gt_video_path": str(gt),
+                "gt_emotion": "happy",
+                "intensity": "level_3",
+                "generated_path": str(generated),
+                "source_audio_path": str(root / "missing-source.wav"),
+                "sample_id": "sample-1",
+            }]
+
+            self.module.require_media_rows(rows, ["fid", "fvd", "accemo"])
+            with self.assertRaisesRegex(FileNotFoundError, "source_audio_path"):
+                self.module.require_media_rows(rows, ["syncconf"])
+
 
 if __name__ == "__main__":
     unittest.main()
